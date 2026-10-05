@@ -156,12 +156,21 @@ Une table jouable, servie par un serveur Go qui réutilise le moteur.
 go run ./cmd/server
 ```
 
-Puis http://localhost:8080.
+Puis **http://localhost:8090**.
 
 ```bash
 # Partie reproductible et table plus défavorable
 go run ./cmd/server -seed 42 -decks 8 -h17 -bankroll 500
+
+# Autre port si 8090 est déjà pris
+go run ./cmd/server -addr :8091
 ```
+
+> Le port d'écoute est **8090** et non 8080, parce que ce dernier est très
+> souvent occupé — notamment par le listener HTTP d'Oracle XE (`TNSLSNR`), qui
+> répond un `401` et donne l'impression trompeuse que c'est notre serveur qui
+> réclame un mot de passe. En cas de conflit, le serveur refuse de démarrer
+> avec un message explicite au lieu d'annoncer une URL injoignable.
 
 Trois onglets :
 

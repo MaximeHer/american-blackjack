@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -34,7 +36,10 @@ type session struct {
 }
 
 func main() {
-	addr := flag.String("addr", ":8080", "adresse d'écoute")
+	// Port 8090 et non 8080 : ce dernier est très fréquemment occupé, en
+	// particulier par le listener HTTP d'Oracle XE (TNSLSNR) qui répond un
+	// 401 et fait croire à une demande d'authentification de notre serveur.
+	addr := flag.String("addr", ":8090", "adresse d'écoute")
 	bankroll := flag.Float64("bankroll", 1000, "solde initial")
 	decks := flag.Int("decks", 4, "nombre de jeux")
 	h17 := flag.Bool("h17", false, "le croupier tire sur 17 souple")
@@ -64,6 +69,18 @@ func main() {
 	mux.HandleFunc("/api/curve", handleCurve)
 	mux.HandleFunc("/api/rules-comparison", handleRulesComparison)
 
+	// Le port est réservé AVANT d'annoncer l'URL : sinon, en cas de conflit,
+	// le serveur affiche une adresse joignable alors qu'il n'a rien pris, et
+	// le navigateur atterrit sur le service qui occupe déjà le port.
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Impossible d'ouvrir %s : %v\n\n", *addr, err)
+		fmt.Fprintf(os.Stderr, "Le port est probablement déjà pris par un autre service.\n")
+		fmt.Fprintf(os.Stderr, "Relance en choisissant un autre port, par exemple :\n")
+		fmt.Fprintf(os.Stderr, "    go run ./cmd/server -addr :8091\n")
+		os.Exit(1)
+	}
+
 	fmt.Printf("Table ouverte sur http://localhost%s\n", *addr)
 	fmt.Printf("Règles : %d jeux, croupier %s, blackjack payé %.2f:1\n",
 		rules.NumDecks,
@@ -71,11 +88,10 @@ func main() {
 		rules.BlackjackPayout)
 
 	srv := &http.Server{
-		Addr:              *addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	log.Fatal(srv.ListenAndServe())
+	log.Fatal(srv.Serve(ln))
 }
 
 func (s *session) reset(seed int64) {
