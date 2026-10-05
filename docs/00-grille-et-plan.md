@@ -63,6 +63,11 @@ d'allocations tranchent.
 
 **Attendu** : justification théorique et physique des gains sur trois axes.
 
+> Les 18 paliers sont détaillés un par un dans
+> [01-perspectives-optimisation.md](01-perspectives-optimisation.md), chacun
+> avec son hypothèse d'impact matériel, sa commande de vérification et sa
+> condition de réfutation.
+
 ### Mémoire & localité de cache
 
 | Palier | Cible | État |
@@ -119,7 +124,14 @@ Trois candidats, qui correspondent exactement aux trois exemples de l'énoncé :
    fait croître le tas et augmente la pression du ramasse-miettes.
 
 Candidat retenu en priorité : le **n°2**, mesuré et expliqué mécaniquement,
-avec les deux autres mentionnés.
+avec les autres mentionnés. Les quatre échecs sont décrits avec leur mécanisme
+et la commande de profilage qui les révèle dans
+[01-perspectives-optimisation.md](01-perspectives-optimisation.md).
+
+**Point d'ordonnancement** : l'échec n°2 doit être tenté **avant** la
+parallélisation correcte. Constater la régression puis appliquer la dérivation
+de graines est bien plus démonstratif que l'inverse, et c'est l'ordre dans
+lequel on rencontre réellement le problème.
 
 Chaque tentative vit sur une branche conservée, non fusionnée. Une branche
 d'échec préservée est une preuve matérielle.

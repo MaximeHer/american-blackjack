@@ -343,7 +343,9 @@ consistera à le rendre explicite, pas à le supprimer.
 │   ├── analysis.go        # données des figures du rapport
 │   ├── blackjack_test.go  # oracle et tests de correction
 │   └── table_test.go      # validation croisée Table / PlayRound
-├── docs/                  # rapport d'audit et protocole de mesure
+├── docs/
+│   ├── 00-grille-et-plan.md          # suivi de la couverture des critères
+│   └── 01-perspectives-optimisation.md  # les 18 paliers, hypothèse par hypothèse
 └── constitution.md        # gouvernance technique des assistants IA
 ```
 
@@ -381,3 +383,9 @@ et d'une entrée au journal d'optimisation.
 
 L'invariant est absolu : **l'avantage de la maison mesuré ne doit pas bouger**.
 `go test ./...` avant chaque fusion, sans exception.
+
+Chaque palier est détaillé dans
+[docs/01-perspectives-optimisation.md](docs/01-perspectives-optimisation.md) :
+hypothèse d'impact matériel, commande de vérification, condition de réfutation,
+et axe de la grille visé. Les quatre échecs planifiés du critère 4 y sont
+également documentés, avec leur mécanisme et la mesure qui les révèle.
