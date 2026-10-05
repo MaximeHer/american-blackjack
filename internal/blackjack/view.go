@@ -144,7 +144,7 @@ func (t *Table) View() TableView {
 // information que le joueur n'a pas le droit de connaître.
 func (t *Table) dealerView() DealerView {
 	if !t.revealed {
-		visible := &Hand{Cards: []Card{t.dealer.Cards[0]}}
+		visible := &Hand{Cards: []*Card{t.dealer.Cards[0]}}
 		total, soft := visible.Total()
 		return DealerView{
 			Cards:  cardViews(visible.Cards),
@@ -164,7 +164,7 @@ func (t *Table) dealerView() DealerView {
 	}
 }
 
-func cardViews(cards []Card) []CardView {
+func cardViews(cards []*Card) []CardView {
 	out := make([]CardView, 0, len(cards))
 	for _, c := range cards {
 		out = append(out, CardView{Rank: c.Rank, Suit: c.Suit})

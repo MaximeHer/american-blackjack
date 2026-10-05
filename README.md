@@ -27,10 +27,10 @@ résoudre l'avantage de la maison à 0,01 point près, il faut de l'ordre de
 
 | Coups simulés | Erreur-type sur l'avantage | Durée à la vitesse baseline |
 |---|---|---|
-| 10⁶ | ± 0,114 point | ~2 s |
-| 10⁷ | ± 0,036 point | ~20 s |
-| 10⁸ | ± 0,011 point | ~3 min 20 s |
-| 10⁹ | ± 0,004 point | ~33 min |
+| 10⁶ | ± 0,114 point | ~6 s |
+| 10⁷ | ± 0,036 point | ~55 s |
+| 10⁸ | ± 0,011 point | ~9 min |
+| 10⁹ | ± 0,004 point | ~1 h 32 |
 
 Le débit du moteur n'est donc pas une coquetterie : il conditionne la
 **précision statistique atteignable**. C'est la justification physique de tout
@@ -215,12 +215,15 @@ Valeurs de contrôle mesurées sur la baseline, 2 × 10⁶ coups, graine 42 :
 
 | Grandeur | Mesuré | Attendu | Écart |
 |---|---|---|---|
-| Avantage de la maison | +0,3164 % | ~0,35 % | 0,42 erreur-type |
-| Écart-type par coup | 1,1411 | ~1,14 | conforme |
-| Blackjacks joueur | 4,732 % | ~4,75 % | conforme |
-| Dépassement du croupier | 28,185 % | ~28,3 % | conforme |
+| Avantage de la maison | +0,2641 % | ~0,35 % | 1,06 erreur-type |
+| Écart-type par coup | 1,1414 | ~1,14 | conforme |
+| Blackjacks joueur | 4,729 % | ~4,75 % | conforme |
+| Dépassement du croupier | 28,223 % | ~28,3 % | conforme |
 
-Quatre validations indépendantes qui convergent. `TestHouseEdgeOracle` borne
+Quatre validations indépendantes qui convergent. S'y ajoutent deux contrôles
+externes : `TestTableCrossValidation` fait concorder la table interactive et la
+boucle simulée à **0,0040 point**, et la comparaison des variantes retrouve la
+pénalité du blackjack 6:5 à **+1,374 point** contre +1,39 publié. `TestHouseEdgeOracle` borne
 l'écart accepté à **4 erreurs-types** de la valeur publiée, calculées à partir
 de la variance réellement observée et non d'une marge arbitraire.
 
@@ -244,33 +247,80 @@ cartes et décale l'avantage du jeu principal. L'oracle doit donc se mesurer
 
 ## 7. Mesure de référence
 
-Relevée sur la machine de développement, Go 1.26.4, windows/amd64 :
+Relevée sur la machine de développement, Go 1.26.4, windows/amd64, 12 coeurs
+logiques dont **un seul utilisé**.
+
+De bout en bout, sur le binaire :
 
 | Métrique | Valeur |
 |---|---|
-| Débit | **504 540 coups/s** |
-| Temps par coup | **1 982 ns** |
+| Débit | **181 112 coups/s** |
+| Temps par coup | **5 521 ns** |
 
-Ce chiffre n'a de valeur qu'accompagné de la spécification complète du banc
-d'essai et d'un protocole statistique — voir [docs/](docs/).
+Par benchmark Go, avec `-benchmem` :
 
----
+| Benchmark | Temps | Mémoire | Allocations |
+|---|---|---|---|
+| `PlayRound` — un coup complet | 5 200 ns/op | 1 656 o/op | **46 allocs/op** |
+| `PlayRound` avec paris annexes | 4 900 ns/op | 2 081 o/op | **57 allocs/op** |
+| `Shuffle` — un rebattage | 19 300 ns/op | 15 488 o/op | **220 allocs/op** |
+| `Decide` — une décision | 264 ns/op | 48 o/op | 3 allocs/op |
+| `HandTotal` | 36,6 ns/op | 0 | 0 |
+| `Simulate` — 10 000 coups | 41 ms/op | **16,5 Mo/op** | **469 801 allocs/op** |
+
+Les 16,5 Mo alloués pour 10 000 coups représentent **1,65 Go par million de
+coups** : la pression sur le ramasse-miettes est le premier suspect du profil.
+
+Tailles des structures, relevées par `unsafe.Sizeof` (voir `TestStructSizes`) :
+
+| Structure | Taille | Champs utiles | Remplissage |
+|---|---|---|---|
+| `Card` | 32 o | 32 o | 0 o |
+| `Hand` | 56 o | 37 o | **19 o (34 %)** |
+| `RoundResult` | 104 o | 76 o | **28 o (27 %)** |
+
+Une carte tiendrait dans **un seul octet** — 4 bits de rang, 2 bits d'enseigne.
+Le facteur sur la représentation est donc de **32**, et une ligne de cache de
+64 octets contient 2 cartes au lieu de 64.
+
+Ces chiffres n'ont de valeur qu'accompagnés de la spécification complète du
+banc d'essai et d'un protocole statistique — voir [docs/](docs/).
 
 ## 8. Choix volontairement naïfs de la baseline
 
 Chacun est documenté dans le code à l'endroit où il est fait, avec son coût
-physique. Ce sont les cibles du travail d'optimisation à venir.
+physique. Ce sont les cibles du travail d'optimisation.
 
-| Emplacement | Choix naïf | Coût |
-|---|---|---|
-| `card.go` | rang et enseigne en `string` | `Card` fait 32 o au lieu de 1 o ; 2 cartes par ligne de cache au lieu de 64 |
-| `hand.go` | cartes en slice, total recalculé | allocation par tirage, parcours complet à chaque appel |
-| `shoe.go` | sabot reconstruit par `append`, distribution par re-slicing | ~6,6 Ko alloués par rebattage, des milliers de fois |
-| `strategy.go` | clés textuelles via `fmt.Sprintf` dans une `map` | une allocation et un hachage par décision |
-| `sidebets.go` | tables de gains en `map[string]float64` | hachage de chaîne sur le hot path |
-| `sim.go` | boucle strictement séquentielle | un seul coeur utilisé sur 12 |
+**Règle appliquée** : chaque défaut est du code qu'un développeur débutant
+écrirait réellement. Aucun ralentissement artificiel — pas d'attente, pas de
+travail inventé. C'est la condition pour que les gains mesurés soient
+justifiables physiquement, et non fabriqués.
 
----
+| Emplacement | Choix naïf | Pourquoi c'est plausible | Coût |
+|---|---|---|---|
+| `card.go` | rang et enseigne en `string` | on écrit ce qu'on lit | `Card` fait 32 o au lieu de 1 o |
+| `card.go` | `map[string]int` pour la valeur d'une carte | plus lisible qu'un `switch` | un hachage par carte et par appel à `Total()` |
+| `hand.go`, `shoe.go` | `[]*Card` au lieu de `[]Card` | réflexe Java/C# | une allocation par carte, aucune localité |
+| `hand.go` | total recalculé à chaque appel | le plus simple à écrire | parcours complet, plusieurs fois par décision |
+| `hand.go`, `round.go` | champs de structs dans un ordre quelconque | on n'y pense pas | 19 o et 28 o de remplissage |
+| `shoe.go` | mélange par tirage-et-retrait | l'algorithme intuitif | quadratique, ~21 000 déplacements par rebattage |
+| `shoe.go` | sabot reconstruit par `append` | on repart de zéro | 15,5 Ko et 220 allocations par rebattage |
+| `strategy.go` | clés textuelles via `fmt.Sprintf` dans une `map` | une table se fait avec une map | 3 allocations par décision |
+| `strategy.go` | stratégie derrière une interface | réflexe orienté objet | appel dynamique, pas d'inlining |
+| `round.go` | journal narratif par `fmt.Sprintf` | on veut afficher l'historique | ~10 allocations par coup, jetées aussitôt |
+| `sidebets.go` | tables de gains en `map[string]float64` | idem | hachage de chaîne sur le hot path |
+| `sim.go` | boucle strictement séquentielle | on n'y pense pas d'emblée | 1 coeur sur 12 |
+
+### Un cas à part : le journal narratif
+
+Le journal construit par `PlayRound` n'est **pas** du travail inutile : il
+alimente le panneau de narration de l'interface, via `/api/sample-round`.
+
+Le défaut n'est pas de le produire, c'est de le produire **sans que l'appelant
+l'ait demandé** — donc aussi dans la boucle de simulation, qui ne le lit
+jamais. C'est la forme la plus courante de gaspillage en production : un code
+partagé entre deux usages paie le coût du plus exigeant des deux. L'optimisation
+consistera à le rendre explicite, pas à le supprimer.
 
 ## 9. Structure
 
@@ -301,15 +351,33 @@ physique. Ce sont les cibles du travail d'optimisation à venir.
 
 ## 10. Feuille de route d'optimisation
 
-Chaque palier fait l'objet d'une branche, d'une mesure isolée et d'une entrée
-au journal d'optimisation.
+Chaque palier fait l'objet d'une branche, d'une mesure isolée par `benchstat`
+et d'une entrée au journal d'optimisation.
 
-1. Carte sur 1 octet, sabot `[208]uint8` distribué par curseur
-2. Mains en tableaux fixes, suppression de toute allocation du hot path
-3. Réordonnancement des champs d'état (`go vet -fieldalignment`)
-4. Table de stratégie plate indexée arithmétiquement, sans hachage
-5. Worker pool borné aux coeurs physiques, générateur par worker
-6. Arrêt précoce sur critère d'intervalle de confiance
-7. API binaire et persistance indexée des résultats
+**Mémoire et localité de cache**
 
-L'invariant est absolu : l'avantage de la maison mesuré ne doit pas bouger.
+1. Journal narratif rendu explicite, retiré du chemin de simulation
+2. `map[string]int` → tableau indexé pour la valeur des cartes
+3. `[]*Card` → `[]Card` : suppression de l'allocation par carte
+4. `Card` compactée sur 1 octet (4 bits de rang, 2 bits d'enseigne)
+5. Sabot en tableau fixe distribué par curseur, zéro allocation
+6. Mélange de Fisher-Yates en place
+7. Total de la main maintenu en incrémental
+8. Réordonnancement des champs de `Hand` et `RoundResult`
+9. Mains en tableaux fixes, suppression du dernier `append`
+
+**Concurrence et scalabilité**
+
+10. Stratégie dévirtualisée, table plate indexée arithmétiquement
+11. Worker pool borné aux coeurs physiques, générateur par worker
+12. Agrégation atomique ou fusion locale sans contention
+13. Arrêt précoce sur critère d'intervalle de confiance
+
+**I/O réseau et persistance**
+
+14. API binaire Protobuf/gRPC comparée à la sérialisation JSON
+15. Persistance indexée des résultats par jeu de règles, `EXPLAIN ANALYZE`
+16. Cache LRU des configurations déjà simulées
+
+L'invariant est absolu : **l'avantage de la maison mesuré ne doit pas bouger**.
+`go test ./...` avant chaque fusion, sans exception.

@@ -1,5 +1,7 @@
 package blackjack
 
+import "fmt"
+
 // RoundResult agrège le résultat d'un coup.
 //
 // MainWagered ne retient que la mise initiale : c'est le dénominateur de
@@ -7,22 +9,40 @@ package blackjack
 // qui a été réellement engagé, splits et doubles compris, et sert à calculer
 // l'« element of risk ». Distinguer les deux est indispensable pour que les
 // chiffres du rapport soient comparables aux valeurs publiées.
+//
+// VERSION DE RÉFÉRENCE : l'ordre des champs est quelconque, les booléens
+// étant intercalés entre les champs de 8 octets. Go ne réordonne jamais les
+// champs, donc le remplissage inséré par le compilateur est réel et mesurable.
 type RoundResult struct {
-	MainWagered float64
-	Action      float64
-	MainNet     float64
-	SideWagered float64
-	SideNet     float64
-	Hands       int
 	PlayerBJ    bool
+	MainWagered float64
 	DealerBJ    bool
+	Action      float64
 	// DealerPlayed indique que le croupier a effectivement complété sa main.
 	// Il ne le fait pas quand le coup est déjà résolu — blackjack de part et
 	// d'autre, ou toutes les mains du joueur sautées. Les fréquences de
 	// dépassement du croupier doivent être rapportées à ce compteur, et non
 	// au nombre total de coups, sous peine d'être sous-estimées.
 	DealerPlayed bool
+	MainNet      float64
 	DealerBust   bool
+	SideWagered  float64
+	Hands        int
+	SideNet      float64
+
+	// Log est le récit du coup, carte par carte et décision par décision.
+	//
+	// VERSION DE RÉFÉRENCE : il est construit systématiquement, y compris en
+	// simulation où personne ne le lit. Chaque ligne coûte un fmt.Sprintf —
+	// formatage et allocation — et un coup en produit une dizaine. C'est la
+	// forme la plus coûteuse de travail inutile : non seulement elle alloue,
+	// mais elle alimente le ramasse-miettes avec des objets immédiatement
+	// morts.
+	//
+	// Le journal est une vraie fonctionnalité, consommée par l'interface web.
+	// Le défaut n'est pas de le produire, c'est de le produire sans que
+	// l'appelant l'ait demandé.
+	Log []string
 }
 
 // PlayRound joue un coup complet de blackjack américain :
@@ -50,8 +70,12 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 	p2 := s.Deal()
 	hole := s.Deal()
 
-	dealer := &Hand{Cards: []Card{up, hole}}
-	hands := []*Hand{{Cards: []Card{p1, p2}, Bet: bet}}
+	dealer := &Hand{Cards: []*Card{up, hole}}
+	hands := []*Hand{{Cards: []*Card{p1, p2}, Bet: bet}}
+
+	res.Log = append(res.Log, fmt.Sprintf("Mise de %.2f sur la case principale.", bet))
+	res.Log = append(res.Log, fmt.Sprintf("Joueur : %s et %s.", p1.Label(), p2.Label()))
+	res.Log = append(res.Log, fmt.Sprintf("Croupier : %s visible, une carte cachée.", up.Label()))
 
 	dealerBJ := dealer.IsBlackjack()
 	playerBJ := hands[0].IsBlackjack()
@@ -60,32 +84,37 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 
 	// --- Paris annexes jugés sur la distribution initiale ---
 	if sb.PerfectPairs > 0 {
-		m, _ := EvalPerfectPairs(p1, p2)
+		m, label := EvalPerfectPairs(p1, p2)
 		res.SideNet += netSide(sb.PerfectPairs, m)
+		res.Log = append(res.Log, fmt.Sprintf("Perfect Pairs : %s.", label))
 	}
 	if sb.TwentyOnePlus3 > 0 {
-		m, _ := EvalTwentyOnePlus3(p1, p2, up)
+		m, label := EvalTwentyOnePlus3(p1, p2, up)
 		res.SideNet += netSide(sb.TwentyOnePlus3, m)
+		res.Log = append(res.Log, fmt.Sprintf("21+3 : %s.", label))
 	}
 	if sb.LuckyLadies > 0 {
-		m, _ := EvalLuckyLadies(p1, p2, dealerBJ)
+		m, label := EvalLuckyLadies(p1, p2, dealerBJ)
 		res.SideNet += netSide(sb.LuckyLadies, m)
+		res.Log = append(res.Log, fmt.Sprintf("Lucky Ladies : %s.", label))
 	}
 
 	// --- Assurance ---
 	// Proposée uniquement sur un As visible, et refusée par la stratégie de
 	// base. Le code est présent pour que la règle soit complète et mesurable.
-	if r.OfferInsurance && up.IsAce() && TakeInsurance() {
+	if r.OfferInsurance && up.IsAce() && TakeInsurance(up) {
 		ins := bet / 2
 		if dealerBJ {
 			res.MainNet += ins * 2
 		} else {
 			res.MainNet -= ins
 		}
+		res.Log = append(res.Log, fmt.Sprintf("Assurance prise pour %.2f.", ins))
 	}
 
 	// --- Contrôle de la carte cachée ---
 	if dealerBJ {
+		res.Log = append(res.Log, fmt.Sprintf("Le croupier retourne %s : blackjack.", hole.Label()))
 		if !playerBJ {
 			res.MainNet -= bet
 		}
@@ -102,9 +131,10 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 	if playerBJ {
 		res.MainNet += bet * r.BlackjackPayout
 		res.Hands = 1
+		res.Log = append(res.Log, fmt.Sprintf("Blackjack du joueur, payé %.2f pour 1.", r.BlackjackPayout))
 		if sb.Buster > 0 {
 			// Le croupier complète sa main pour que le Buster soit jugeable.
-			playDealer(dealer, s, r)
+			playDealer(dealer, s, r, &res)
 			m, _ := EvalBuster(len(dealer.Cards), dealer.IsBust())
 			res.SideNet += netSide(sb.Buster, m)
 			res.DealerPlayed = true
@@ -128,7 +158,11 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 				break
 			}
 
-			switch Decide(h, up, r, len(hands)) {
+			action := DefaultStrategy.Decide(h, up, r, len(hands))
+			res.Log = append(res.Log, fmt.Sprintf("Main %d (%s) : %s.",
+				i+1, h.Describe(), actionLabel(action)))
+
+			switch action {
 			case Stand:
 				h.Stood = true
 
@@ -150,12 +184,12 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 				// moitié reçoit une carte.
 				second := h.Cards[1]
 				nh := &Hand{
-					Cards:     []Card{second},
+					Cards:     []*Card{second},
 					Bet:       bet,
 					FromSplit: true,
 					SplitAce:  second.IsAce(),
 				}
-				h.Cards = []Card{h.Cards[0]}
+				h.Cards = []*Card{h.Cards[0]}
 				h.FromSplit = true
 				h.SplitAce = h.Cards[0].IsAce()
 				h.Add(s.Deal())
@@ -179,7 +213,8 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 		}
 	}
 	if live || sb.Buster > 0 {
-		playDealer(dealer, s, r)
+		res.Log = append(res.Log, fmt.Sprintf("Le croupier retourne %s.", hole.Label()))
+		playDealer(dealer, s, r, &res)
 		res.DealerPlayed = true
 	}
 
@@ -209,20 +244,28 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 
 	// --- Pari Buster ---
 	if sb.Buster > 0 {
-		m, _ := EvalBuster(len(dealer.Cards), dealerBust)
+		m, label := EvalBuster(len(dealer.Cards), dealerBust)
 		res.SideNet += netSide(sb.Buster, m)
+		res.Log = append(res.Log, fmt.Sprintf("Buster Blackjack : %s.", label))
 	}
 
+	res.Log = append(res.Log, fmt.Sprintf("Résultat net du coup : %+.2f.", res.MainNet+res.SideNet))
 	return res
 }
 
 // playDealer complète la main du croupier : il tire jusqu'à 17, et sur un 17
 // souple selon la règle de la table (H17 ou S17).
-func playDealer(d *Hand, s *Shoe, r Rules) {
+//
+// res peut être nil quand le journal n'est pas souhaité.
+func playDealer(d *Hand, s *Shoe, r Rules, res *RoundResult) {
 	for {
 		t, soft := d.Total()
 		if t < 17 || (t == 17 && soft && r.DealerHitsSoft17) {
-			d.Add(s.Deal())
+			c := s.Deal()
+			d.Add(c)
+			if res != nil {
+				res.Log = append(res.Log, fmt.Sprintf("Le croupier tire %s.", c.Label()))
+			}
 			continue
 		}
 		return

@@ -163,3 +163,15 @@ func CompareRules(n int, seed int64) []RuleComparison {
 	}
 	return out
 }
+
+// SampleRound joue un coup isolé et renvoie son résultat, journal narratif
+// compris. C'est le consommateur légitime du journal construit par PlayRound,
+// affiché par le panneau de narration de l'interface.
+//
+// Le défaut de la version de référence n'est pas de produire ce journal, c'est
+// de le produire aussi dans la boucle de simulation, qui ne le lit jamais.
+func SampleRound(seed int64, r Rules, bet float64, sb SideBets) RoundResult {
+	rng := rand.New(rand.NewSource(seed))
+	shoe := NewShoe(r.NumDecks, r.Penetration, rng)
+	return PlayRound(shoe, r, bet, sb)
+}

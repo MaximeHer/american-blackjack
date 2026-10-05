@@ -123,8 +123,8 @@ func (t *Table) Deal(bet float64, side SideBets) error {
 	p2 := t.shoe.Deal()
 	hole := t.shoe.Deal()
 
-	t.dealer = &Hand{Cards: []Card{up, hole}}
-	t.hands = []*playHand{{h: &Hand{Cards: []Card{p1, p2}, Bet: bet}}}
+	t.dealer = &Hand{Cards: []*Card{up, hole}}
+	t.hands = []*playHand{{h: &Hand{Cards: []*Card{p1, p2}, Bet: bet}}}
 
 	// Paris annexes jugés sur la seule distribution initiale. Lucky Ladies
 	// attend le contrôle de la carte cachée, dont dépend son gain maximal.
@@ -217,7 +217,7 @@ func (t *Table) peek() {
 		t.settleHand(t.hands[0], "blackjack", ret)
 		t.note("Blackjack ! Payé 3:2.")
 		if t.side.Buster > 0 {
-			playDealer(t.dealer, t.shoe, t.rules)
+			playDealer(t.dealer, t.shoe, t.rules, nil)
 			t.resolveBuster()
 		} else {
 			t.resolveBusterNoDraw()
@@ -265,12 +265,12 @@ func (t *Table) playerAct(action string) error {
 		second := ph.h.Cards[1]
 		t.Bankroll -= t.bet
 		nh := &playHand{h: &Hand{
-			Cards:     []Card{second},
+			Cards:     []*Card{second},
 			Bet:       t.bet,
 			FromSplit: true,
 			SplitAce:  second.IsAce(),
 		}}
-		ph.h.Cards = []Card{ph.h.Cards[0]}
+		ph.h.Cards = []*Card{ph.h.Cards[0]}
 		ph.h.FromSplit = true
 		ph.h.SplitAce = ph.h.Cards[0].IsAce()
 		ph.h.Add(t.shoe.Deal())
@@ -324,7 +324,7 @@ func (t *Table) finish() {
 		}
 	}
 	if live || t.side.Buster > 0 {
-		playDealer(t.dealer, t.shoe, t.rules)
+		playDealer(t.dealer, t.shoe, t.rules, nil)
 	}
 
 	dealerTotal, _ := t.dealer.Total()

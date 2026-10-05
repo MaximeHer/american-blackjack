@@ -68,6 +68,7 @@ func main() {
 	mux.HandleFunc("/api/simulate", handleSimulate)
 	mux.HandleFunc("/api/curve", handleCurve)
 	mux.HandleFunc("/api/rules-comparison", handleRulesComparison)
+	mux.HandleFunc("/api/sample-round", handleSampleRound)
 
 	// Le port est réservé AVANT d'annoncer l'URL : sinon, en cas de conflit,
 	// le serveur affiche une adresse joignable alors qu'il n'a rien pris, et
@@ -204,6 +205,26 @@ func handleCurve(w http.ResponseWriter, r *http.Request) {
 	seed := int64(intParam(r, "seed", 42, 0, 1<<30))
 
 	writeJSON(w, blackjack.SimulateCurve(rounds, points, seed, blackjack.DefaultRules(), 1, blackjack.SideBets{}))
+}
+
+// handleSampleRound joue un coup isole et renvoie son recit. C'est le
+// consommateur du journal narratif construit par PlayRound.
+func handleSampleRound(w http.ResponseWriter, r *http.Request) {
+	seed := int64(intParam(r, "seed", int(time.Now().UnixNano()%(1<<29)), 0, 1<<29))
+
+	side := blackjack.SideBets{}
+	if r.URL.Query().Get("sidebets") == "true" {
+		side = blackjack.SideBets{PerfectPairs: 5, TwentyOnePlus3: 5, LuckyLadies: 5, Buster: 5}
+	}
+
+	res := blackjack.SampleRound(seed, blackjack.DefaultRules(), 10, side)
+	writeJSON(w, map[string]any{
+		"seed":    seed,
+		"log":     res.Log,
+		"mainNet": res.MainNet,
+		"sideNet": res.SideNet,
+		"hands":   res.Hands,
+	})
 }
 
 func handleRulesComparison(w http.ResponseWriter, r *http.Request) {

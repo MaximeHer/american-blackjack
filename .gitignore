@@ -15,10 +15,13 @@ trace.out
 *.pprof
 /profiles/
 
-# Résultats de mesure bruts
+# Résultats de mesure bruts, régénérables.
+# baseline.txt est l'exception : c'est la mesure de référence du projet,
+# elle doit être versionnée pour que les comparaisons benchstat soient
+# reproductibles par un tiers.
 /bench/*.txt
 /bench/*.json
-!/bench/.gitkeep
+!/bench/baseline.txt
 
 # Couverture
 coverage.out

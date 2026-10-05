@@ -494,6 +494,22 @@ function sup(n) {
   return String(n).split('').map((c) => map[c] || c).join('');
 }
 
+/* ---------------------- Récit d'un coup ---------------------- */
+
+async function drawSample() {
+  const q = new URLSearchParams({ sidebets: $('#log-side').checked });
+  const d = await api('/api/sample-round?' + q);
+  const box = $('#narration');
+  box.innerHTML = '';
+  (d.log || []).forEach((line) => {
+    const el = document.createElement('div');
+    el.className = 'line';
+    el.textContent = line;
+    box.appendChild(el);
+  });
+  if (!d.log || !d.log.length) toast('Aucun récit renvoyé.');
+}
+
 /* ---------------------- Comparaison des règles ---------------------- */
 
 async function drawRules() {
@@ -596,6 +612,7 @@ function wire() {
   $('#btn-sim').onclick = () => guard(runSim);
   $('#btn-curve').onclick = () => guard(drawCurve);
   $('#btn-rules').onclick = () => guard(drawRules);
+  $('#btn-sample').onclick = () => guard(drawSample);
 
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;

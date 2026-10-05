@@ -4,19 +4,27 @@ import "math/rand"
 
 // Shoe est le sabot de plusieurs jeux mélangés, muni d'une carte de coupe.
 //
-// VERSION DE RÉFÉRENCE. Deux choix volontairement naïfs :
-//   - la distribution retire la carte de tête du slice (s.cards = s.cards[1:]),
-//     ce qui fait avancer le pointeur mais interdit de réutiliser le tableau
-//     sous-jacent ;
-//   - chaque rebattage reconstruit intégralement le sabot avec append, donc
-//     alloue 208 Card de 32 octets, soit environ 6,6 Ko sur le tas, et ce
-//     plusieurs milliers de fois par simulation.
+// VERSION DE RÉFÉRENCE. Trois choix volontairement naïfs :
 //
-// La version optimisée gardera un tableau fixe [208]uint8 et un simple curseur
-// d'index, ce qui supprime toute allocation et donne un accès strictement
-// séquentiel, idéal pour le préchargement matériel du cache.
+//  1. Le sabot est un slice de POINTEURS vers des cartes allouées une par une.
+//     Un rebattage alloue donc 208 objets distincts plus le slice, et les
+//     cartes se retrouvent dispersées dans le tas.
+//
+//  2. Le mélange est l'algorithme intuitif : tirer une carte au hasard dans le
+//     paquet, la retirer, recommencer. Il est correct et uniforme, mais chaque
+//     retrait décale la fin du slice, ce qui le rend quadratique — environ
+//     21 000 déplacements d'éléments par rebattage, pour un travail que
+//     Fisher-Yates fait en 208 échanges sur place.
+//
+//  3. La distribution retire la carte de tête par re-slicing, ce qui interdit
+//     de réutiliser le tableau sous-jacent et impose de tout reconstruire au
+//     rebattage.
+//
+// La version optimisée gardera un tableau fixe de cartes compactes et un
+// simple curseur d'index : aucune allocation, accès strictement séquentiel,
+// et un mélange en place.
 type Shoe struct {
-	cards       []Card
+	cards       []*Card
 	numDecks    int
 	penetration float64
 	cutAt       int
@@ -39,30 +47,39 @@ func NewShoe(numDecks int, penetration float64, rng *rand.Rand) *Shoe {
 	return s
 }
 
-// Shuffle reconstruit le sabot complet, le mélange par Fisher-Yates et
-// repositionne la carte de coupe.
+// Shuffle reconstruit le sabot complet, le mélange et repositionne la carte de
+// coupe.
 func (s *Shoe) Shuffle() {
-	cards := []Card{}
+	// Construction du paquet : une allocation par carte.
+	pool := []*Card{}
 	for d := 0; d < s.numDecks; d++ {
 		for _, r := range AllRanks {
 			for _, su := range AllSuits {
-				cards = append(cards, Card{Rank: r, Suit: su})
+				pool = append(pool, &Card{Rank: r, Suit: su})
 			}
 		}
 	}
-	s.rng.Shuffle(len(cards), func(i, j int) {
-		cards[i], cards[j] = cards[j], cards[i]
-	})
-	s.cards = cards
+
+	// Mélange naïf : on tire une carte au hasard et on la retire du paquet.
+	// Correct, mais quadratique à cause du décalage provoqué par chaque
+	// retrait.
+	shuffled := []*Card{}
+	for len(pool) > 0 {
+		i := s.rng.Intn(len(pool))
+		shuffled = append(shuffled, pool[i])
+		pool = append(pool[:i], pool[i+1:]...)
+	}
+
+	s.cards = shuffled
 	// La coupe est placée de sorte qu'il reste (1 - penetration) du sabot
 	// quand elle sort.
-	s.cutAt = len(cards) - int(float64(len(cards))*s.penetration)
+	s.cutAt = len(shuffled) - int(float64(len(shuffled))*s.penetration)
 	s.Shuffles++
 }
 
 // Deal distribue la carte suivante. Par sécurité, un sabot épuisé est rebattu,
 // mais la carte de coupe doit normalement provoquer le rebattage bien avant.
-func (s *Shoe) Deal() Card {
+func (s *Shoe) Deal() *Card {
 	if len(s.cards) == 0 {
 		s.Shuffle()
 	}

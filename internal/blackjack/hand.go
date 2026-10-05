@@ -2,23 +2,32 @@ package blackjack
 
 // Hand représente une main, celle du joueur comme celle du croupier.
 //
-// VERSION DE RÉFÉRENCE. Deux choix volontairement naïfs :
-//   - les cartes sont dans un slice alimenté par append, donc chaque tirage
-//     peut déclencher une réallocation et une recopie sur le tas ;
-//   - le total est recalculé intégralement à chaque appel de Total(), alors
-//     qu'il pourrait être maintenu en incrémental dans 3 octets.
+// VERSION DE RÉFÉRENCE. Trois choix volontairement naïfs :
 //
-// Total() est appelé plusieurs fois par décision (stratégie, test de bust,
-// comparaison finale), ce qui en fait l'une des fonctions les plus chaudes
-// du moteur.
+//  1. Les cartes sont un slice de POINTEURS, alimenté par append. Chaque
+//     tirage peut réallouer et recopier, et chaque lecture d'une carte
+//     déréférence un pointeur vers une zone du tas sans rapport avec ses
+//     voisines. La main n'a aucune localité.
+//
+//  2. Le total est recalculé intégralement à chaque appel de Total(), alors
+//     qu'il pourrait être maintenu en incrémental dans trois octets. Total()
+//     est appelé plusieurs fois par décision — stratégie, test de
+//     dépassement, comparaison finale — ce qui en fait la fonction la plus
+//     chaude du moteur.
+//
+//  3. L'ordre des champs est quelconque : les booléens sont intercalés entre
+//     les champs de 8 octets, ce qui force le compilateur à insérer du
+//     remplissage. Go ne réordonne jamais les champs d'une structure, donc ce
+//     gaspillage est réel et mesurable par unsafe.Sizeof. Regrouper les
+//     booléens en fin de structure suffirait à le supprimer.
 type Hand struct {
-	Cards       []Card
-	Bet         float64
 	Doubled     bool
+	Bet         float64
 	FromSplit   bool
+	Cards       []*Card
 	SplitAce    bool
-	Surrendered bool
 	Stood       bool
+	Surrendered bool
 }
 
 // Total renvoie le meilleur total de la main et indique si elle est souple,
@@ -65,4 +74,19 @@ func (h *Hand) IsPair() bool {
 }
 
 // Add ajoute une carte à la main.
-func (h *Hand) Add(c Card) { h.Cards = append(h.Cards, c) }
+func (h *Hand) Add(c *Card) { h.Cards = append(h.Cards, c) }
+
+// Describe énumère les cartes de la main en clair, pour le journal narratif.
+//
+// VERSION DE RÉFÉRENCE : construit une chaîne par appel, y compris en
+// simulation où le journal n'est jamais lu.
+func (h *Hand) Describe() string {
+	s := ""
+	for i, c := range h.Cards {
+		if i > 0 {
+			s += ", "
+		}
+		s += c.Label()
+	}
+	return s
+}

@@ -1,0 +1,46 @@
+goos: windows
+goarch: amd64
+pkg: github.com/MaximeHer/american-blackjack/internal/blackjack
+cpu: AMD Ryzen 5 5600H with Radeon Graphics         
+BenchmarkPlayRound-12            	  237387	      5145 ns/op	    1656 B/op	      46 allocs/op
+BenchmarkPlayRound-12            	  218229	      5336 ns/op	    1655 B/op	      46 allocs/op
+BenchmarkPlayRound-12            	  216007	      5447 ns/op	    1656 B/op	      46 allocs/op
+BenchmarkPlayRound-12            	  210583	      5065 ns/op	    1656 B/op	      46 allocs/op
+BenchmarkPlayRound-12            	  197398	      5224 ns/op	    1656 B/op	      46 allocs/op
+BenchmarkPlayRoundSideBets-12    	  196755	      5285 ns/op	    2082 B/op	      57 allocs/op
+BenchmarkPlayRoundSideBets-12    	  245625	      4844 ns/op	    2081 B/op	      57 allocs/op
+BenchmarkPlayRoundSideBets-12    	  232407	      4857 ns/op	    2081 B/op	      57 allocs/op
+BenchmarkPlayRoundSideBets-12    	  263388	      5068 ns/op	    2081 B/op	      57 allocs/op
+BenchmarkPlayRoundSideBets-12    	  265492	      4885 ns/op	    2081 B/op	      57 allocs/op
+BenchmarkShuffle-12              	   52279	     20958 ns/op	   15488 B/op	     220 allocs/op
+BenchmarkShuffle-12              	   59228	     18256 ns/op	   15488 B/op	     220 allocs/op
+BenchmarkShuffle-12              	   73141	     19321 ns/op	   15488 B/op	     220 allocs/op
+BenchmarkShuffle-12              	   57039	     21007 ns/op	   15488 B/op	     220 allocs/op
+BenchmarkShuffle-12              	   67254	     17971 ns/op	   15488 B/op	     220 allocs/op
+BenchmarkDeal-12                 	12239964	       102.0 ns/op	      74 B/op	       1 allocs/op
+BenchmarkDeal-12                 	14686839	       100.6 ns/op	      74 B/op	       1 allocs/op
+BenchmarkDeal-12                 	13254424	        93.67 ns/op	      74 B/op	       1 allocs/op
+BenchmarkDeal-12                 	14012274	        89.19 ns/op	      74 B/op	       1 allocs/op
+BenchmarkDeal-12                 	12017352	        92.05 ns/op	      74 B/op	       1 allocs/op
+BenchmarkHandTotal-12            	31453876	        36.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHandTotal-12            	32700843	        36.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHandTotal-12            	34342820	        36.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHandTotal-12            	33686857	        36.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHandTotal-12            	33368184	        37.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDecide-12               	 4256858	       272.4 ns/op	      48 B/op	       3 allocs/op
+BenchmarkDecide-12               	 4615875	       264.3 ns/op	      48 B/op	       3 allocs/op
+BenchmarkDecide-12               	 4589383	       269.1 ns/op	      48 B/op	       3 allocs/op
+BenchmarkDecide-12               	 4250022	       279.7 ns/op	      48 B/op	       3 allocs/op
+BenchmarkDecide-12               	 4078246	       269.0 ns/op	      48 B/op	       3 allocs/op
+BenchmarkSideBetEval-12          	11527166	       111.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSideBetEval-12          	11314531	       110.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSideBetEval-12          	10832143	       106.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSideBetEval-12          	11589801	       105.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSideBetEval-12          	11672367	       105.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSimulate-12             	      31	  44719745 ns/op	16570007 B/op	  469802 allocs/op
+BenchmarkSimulate-12             	      33	  40616106 ns/op	16569642 B/op	  469801 allocs/op
+BenchmarkSimulate-12             	      33	  40241391 ns/op	16569482 B/op	  469801 allocs/op
+BenchmarkSimulate-12             	      32	  41254003 ns/op	16569573 B/op	  469800 allocs/op
+BenchmarkSimulate-12             	      32	  40875097 ns/op	16569703 B/op	  469801 allocs/op
+PASS
+ok  	github.com/MaximeHer/american-blackjack/internal/blackjack	54.571s

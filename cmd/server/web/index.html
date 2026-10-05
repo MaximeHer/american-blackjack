@@ -156,9 +156,9 @@
       <label>Coups
         <select id="sim-rounds">
           <option value="100000">100 000</option>
-          <option value="1000000" selected>1 000 000</option>
-          <option value="5000000">5 000 000</option>
-          <option value="20000000">20 000 000</option>
+          <option value="500000" selected>500 000</option>
+          <option value="2000000">2 000 000</option>
+          <option value="10000000">10 000 000 (lent)</option>
         </select>
       </label>
       <label>Jeux
@@ -186,6 +186,21 @@
       <canvas id="chart-curve" width="1100" height="380"></canvas>
     </div>
     <button class="ghost" id="btn-curve">Tracer la convergence</button>
+
+    <h3>Récit d'un coup</h3>
+    <p class="dim">
+      Le moteur construit un journal narratif de chaque coup, carte par carte
+      et décision par décision. Ce panneau en est le consommateur. Le journal
+      est une vraie fonctionnalité&nbsp;: le défaut de la version de référence
+      est de le produire <em>aussi</em> dans la boucle de simulation, qui ne le
+      lit jamais — une dizaine de <code>fmt.Sprintf</code> par coup, alloués
+      puis immédiatement jetés.
+    </p>
+    <div class="sim-controls">
+      <label class="check"><input type="checkbox" id="log-side" checked> Avec paris annexes</label>
+      <button class="ghost" id="btn-sample">Jouer un coup et le raconter</button>
+    </div>
+    <div class="narration" id="narration"></div>
 
     <h3>Impact des variantes de règles</h3>
     <p class="dim">

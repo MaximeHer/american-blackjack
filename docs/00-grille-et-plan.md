@@ -22,6 +22,8 @@ L1/L2/L3, RAM, OS, version exacte du runtime) et protocole Hyperfine rigoureux
 | Protocole Hyperfine avec `--warmup` et itérations | à faire |
 | Isolation du bruit documentée | à faire |
 | Écart-type et variance | **acquis** — produits par le moteur (`Stats.StdDev`, `Stats.Variance`, `Stats.StdError`) |
+| Benchmarks Go isolés par étage | **acquis** — `bench_test.go`, 8 benchmarks, mesure de référence dans `bench/baseline.txt` |
+| Tailles de structures et remplissage | **acquis** — `TestStructSizes` |
 
 **Point fort à exploiter** : le projet justifie physiquement son besoin de
 performance. L'écart-type par coup (1,14) dépassant l'avantage mesuré (0,35 %),
@@ -43,12 +45,17 @@ identification formelle du hot path.
 | Flamegraph annoté | à faire |
 | Analyse textuelle du goulot | à faire |
 
-**Hot path présumé, à confirmer par le profil** : `Decide` construit sa clé par
-`fmt.Sprintf` puis interroge une `map` à chaque décision ; `Hand.Total` est
-recalculé plusieurs fois par décision ; `Shoe.Shuffle` alloue ~6,6 Ko par
-rebattage, soit 70 471 fois sur 2 × 10⁶ coups.
+**Suspects désignés par les benchmarks, à confirmer par le profil** :
 
-Ne pas présupposer : le profil décide.
+| Mesure | Valeur | Suspect |
+|---|---|---|
+| `PlayRound` | 5 200 ns, 1 656 o, **46 allocs** | le journal narratif (~10 `Sprintf`) et les cartes allouées une par une |
+| `Shuffle` | 19 300 ns, 15 488 o, **220 allocs** | mélange quadratique + 208 cartes allouées |
+| `Decide` | 264 ns, **3 allocs** | `fmt.Sprintf` pour la clé, puis hachage de `map` |
+| `Simulate` 10⁴ coups | **16,5 Mo, 469 801 allocs** | pression ramasse-miettes : 1,65 Go par million de coups |
+
+Ne pas présupposer l'ordre d'importance : le profil CPU et le profil
+d'allocations tranchent.
 
 ---
 
@@ -60,11 +67,16 @@ Ne pas présupposer : le profil décide.
 
 | Palier | Cible | État |
 |---|---|---|
-| Carte sur 1 octet (4 bits rang + 2 bits enseigne) | `Card` 32 o → 1 o | à faire |
-| Sabot `[208]uint8` + curseur d'index | supprime l'allocation par rebattage, accès séquentiel | à faire |
-| Mains en tableaux fixes, total incrémental | `0 allocs/op` | à faire |
-| Réordonnancement des champs (`fieldalignment`) | réduction du padding | à faire |
-| Table de stratégie plate indexée arithmétiquement | supprime `Sprintf` et hachage | à faire |
+| Journal narratif rendu explicite | retire ~10 `Sprintf` du chemin de simulation | à faire |
+| `map[string]int` → tableau pour la valeur des cartes | supprime un hachage par carte | à faire |
+| `[]*Card` → `[]Card` | supprime une allocation par carte, rétablit la localité | à faire |
+| Carte sur 1 octet (4 bits rang + 2 bits enseigne) | `Card` 32 o → 1 o, facteur 32 | à faire |
+| Sabot en tableau fixe + curseur | supprime 220 allocs par rebattage | à faire |
+| Mélange de Fisher-Yates en place | quadratique → linéaire | à faire |
+| Total de la main en incrémental | supprime le parcours répété | à faire |
+| Réordonnancement des champs | récupère 19 o sur `Hand`, 28 o sur `RoundResult` | à faire |
+| Mains en tableaux fixes | `0 allocs/op` sur `PlayRound` | à faire |
+| Stratégie dévirtualisée + table plate | supprime appel dynamique, `Sprintf` et hachage | à faire |
 
 ### Concurrence & scalabilité CPU
 

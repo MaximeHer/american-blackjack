@@ -6,22 +6,22 @@ import (
 	"testing"
 )
 
-func c(rank, suit string) Card { return Card{Rank: rank, Suit: suit} }
+func c(rank, suit string) *Card { return &Card{Rank: rank, Suit: suit} }
 
 func TestHandTotal(t *testing.T) {
 	cases := []struct {
 		name  string
-		cards []Card
+		cards []*Card
 		total int
 		soft  bool
 	}{
-		{"blackjack", []Card{c("A", "Pique"), c("K", "Coeur")}, 21, true},
-		{"as souple", []Card{c("A", "Pique"), c("6", "Coeur")}, 17, true},
-		{"as durci", []Card{c("A", "Pique"), c("6", "Coeur"), c("9", "Trefle")}, 16, false},
-		{"deux as", []Card{c("A", "Pique"), c("A", "Coeur")}, 12, true},
-		{"trois as", []Card{c("A", "Pique"), c("A", "Coeur"), c("A", "Trefle")}, 13, true},
-		{"saute", []Card{c("K", "Pique"), c("Q", "Coeur"), c("5", "Trefle")}, 25, false},
-		{"dur 20", []Card{c("K", "Pique"), c("Q", "Coeur")}, 20, false},
+		{"blackjack", []*Card{c("A", "Pique"), c("K", "Coeur")}, 21, true},
+		{"as souple", []*Card{c("A", "Pique"), c("6", "Coeur")}, 17, true},
+		{"as durci", []*Card{c("A", "Pique"), c("6", "Coeur"), c("9", "Trefle")}, 16, false},
+		{"deux as", []*Card{c("A", "Pique"), c("A", "Coeur")}, 12, true},
+		{"trois as", []*Card{c("A", "Pique"), c("A", "Coeur"), c("A", "Trefle")}, 13, true},
+		{"saute", []*Card{c("K", "Pique"), c("Q", "Coeur"), c("5", "Trefle")}, 25, false},
+		{"dur 20", []*Card{c("K", "Pique"), c("Q", "Coeur")}, 20, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -35,14 +35,14 @@ func TestHandTotal(t *testing.T) {
 }
 
 func TestBlackjackNotAfterSplit(t *testing.T) {
-	h := &Hand{Cards: []Card{c("A", "Pique"), c("K", "Coeur")}, FromSplit: true}
+	h := &Hand{Cards: []*Card{c("A", "Pique"), c("K", "Coeur")}, FromSplit: true}
 	if h.IsBlackjack() {
 		t.Fatal("un 21 issu d'un split ne doit pas être un blackjack")
 	}
 }
 
 func TestIsPairAcrossTenValues(t *testing.T) {
-	h := &Hand{Cards: []Card{c("K", "Pique"), c("Q", "Coeur")}}
+	h := &Hand{Cards: []*Card{c("K", "Pique"), c("Q", "Coeur")}}
 	if !h.IsPair() {
 		t.Fatal("Roi et Dame valent tous deux 10 et forment une paire séparable")
 	}
@@ -51,7 +51,7 @@ func TestIsPairAcrossTenValues(t *testing.T) {
 func TestPerfectPairs(t *testing.T) {
 	cases := []struct {
 		name  string
-		a, b  Card
+		a, b  *Card
 		mult  float64
 		label string
 	}{
@@ -73,7 +73,7 @@ func TestPerfectPairs(t *testing.T) {
 func TestTwentyOnePlus3(t *testing.T) {
 	cases := []struct {
 		name     string
-		a, b, up Card
+		a, b, up *Card
 		label    string
 	}{
 		{"brelan couleur", c("7", "Coeur"), c("7", "Coeur"), c("7", "Coeur"), "brelan_couleur"},
@@ -244,8 +244,8 @@ func TestDealerBustRateInconditionnel(t *testing.T) {
 		if s.CutReached() {
 			s.Shuffle()
 		}
-		d := &Hand{Cards: []Card{s.Deal(), s.Deal()}}
-		playDealer(d, s, r)
+		d := &Hand{Cards: []*Card{s.Deal(), s.Deal()}}
+		playDealer(d, s, r, nil)
 		if d.IsBust() {
 			bust++
 		}

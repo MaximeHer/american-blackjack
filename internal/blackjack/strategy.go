@@ -11,6 +11,29 @@ const (
 	Surrender = "R"
 )
 
+// Strategy décide du coup à jouer.
+//
+// VERSION DE RÉFÉRENCE : faire passer la décision par une interface est le
+// réflexe orienté objet, et il se paie. L'appel devient dynamique — une
+// indirection par table de méthodes à chaque décision — ce qui empêche le
+// compilateur d'inliner Decide et donc de propager les constantes ou
+// d'éliminer les branches mortes. Le moteur n'a pourtant qu'une seule
+// implémentation, connue à la compilation.
+type Strategy interface {
+	Decide(h *Hand, up *Card, r Rules, handCount int) string
+	TakeInsurance(up *Card) bool
+	Name() string
+}
+
+// DefaultStrategy est la stratégie appliquée par le moteur.
+var DefaultStrategy Strategy = &BasicStrategy{}
+
+// BasicStrategy applique la stratégie de base publiée.
+type BasicStrategy struct{}
+
+// Name identifie la stratégie dans le journal d'un coup.
+func (b *BasicStrategy) Name() string { return "stratégie de base" }
+
 // dealerColumns donne l'ordre des colonnes dans les tables ci-dessous :
 // la carte visible du croupier, de 2 à l'As.
 var dealerColumns = []string{"2", "3", "4", "5", "6", "7", "8", "9", "10", "A"}
@@ -72,9 +95,9 @@ var pairRows = map[string]string{
 // forme "hard-16-10", "soft-18-3" ou "pair-8-A".
 //
 // VERSION DE RÉFÉRENCE. C'est l'un des hot paths les plus coûteux du moteur :
-// chaque décision construit sa clé par fmt.Sprintf — donc une allocation et
-// un formatage — puis hache la chaîne obtenue pour interroger une map. Le
-// palier d'optimisation correspondant remplacera tout cela par une indexation
+// chaque décision construit sa clé par fmt.Sprintf — donc un formatage et une
+// allocation — puis hache la chaîne obtenue pour interroger une map. Le palier
+// d'optimisation correspondant remplacera tout cela par une indexation
 // arithmétique dans un tableau plat, sans allocation ni hachage.
 var strategyTable = map[string]string{}
 
@@ -96,13 +119,13 @@ func init() {
 	}
 }
 
-// Decide applique la stratégie de base à une main, puis dégrade la décision
-// si la règle de la table ne permet pas de la jouer : double interdit, splits
+// Decide applique la stratégie de base à une main, puis dégrade la décision si
+// la règle de la table ne permet pas de la jouer : double interdit, splits
 // épuisés, abandon non proposé.
 //
 // handCount est le nombre de mains déjà en jeu pour ce coup, nécessaire pour
 // savoir si un split supplémentaire est encore autorisé.
-func Decide(h *Hand, up Card, r Rules, handCount int) string {
+func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string {
 	upKey := up.NormalizedRank()
 	total, soft := h.Total()
 
@@ -136,6 +159,20 @@ func Decide(h *Hand, up Card, r Rules, handCount int) string {
 	}
 	return degrade(d, h, r, total, soft)
 }
+
+// TakeInsurance décide de prendre ou non l'assurance. La stratégie de base la
+// refuse toujours : sans comptage de cartes, c'est un pari dont l'espérance
+// est négative d'environ 7 %.
+func (b *BasicStrategy) TakeInsurance(up *Card) bool { return false }
+
+// Decide applique la stratégie par défaut du moteur. Conservé comme fonction
+// libre pour les appelants qui n'ont pas à connaître l'interface.
+func Decide(h *Hand, up *Card, r Rules, handCount int) string {
+	return DefaultStrategy.Decide(h, up, r, handCount)
+}
+
+// TakeInsurance applique la stratégie par défaut du moteur.
+func TakeInsurance(up *Card) bool { return DefaultStrategy.TakeInsurance(up) }
 
 // canSplit vérifie qu'une paire est effectivement séparable compte tenu des
 // règles : une paire d'As déjà issue d'un split ne se resépare que si la table
@@ -187,7 +224,21 @@ func canDouble(h *Hand, r Rules) bool {
 	return true
 }
 
-// TakeInsurance décide de prendre ou non l'assurance. La stratégie de base la
-// refuse toujours : sans comptage de cartes, c'est un pari dont l'espérance
-// est négative d'environ 7 %.
-func TakeInsurance() bool { return false }
+// actionLabel traduit une décision pour le journal narratif d'un coup.
+//
+// VERSION DE RÉFÉRENCE : appelée à chaque décision, y compris en simulation.
+func actionLabel(d string) string {
+	switch d {
+	case Hit:
+		return "tire"
+	case Stand:
+		return "reste"
+	case Double:
+		return "double"
+	case Split:
+		return "sépare"
+	case Surrender:
+		return "abandonne"
+	}
+	return d
+}

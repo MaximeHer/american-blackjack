@@ -125,7 +125,7 @@ func TestTableHideHoleCard(t *testing.T) {
 					i, len(v.Dealer.Cards), v.Dealer.Hidden)
 			}
 			// Le total annoncé ne doit refléter que la carte visible.
-			visible := &Hand{Cards: []Card{tb.dealer.Cards[0]}}
+			visible := &Hand{Cards: []*Card{tb.dealer.Cards[0]}}
 			want, _ := visible.Total()
 			if v.Dealer.Total != want {
 				t.Fatalf("coup %d : total du croupier %d annoncé alors que sa carte visible vaut %d",

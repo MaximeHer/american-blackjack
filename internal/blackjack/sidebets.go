@@ -63,7 +63,7 @@ var busterPaytable = map[int]float64{
 
 // EvalPerfectPairs évalue le pari Perfect Pairs sur les deux premières cartes
 // du joueur. Renvoie le multiplicateur de gain et le libellé de la combinaison.
-func EvalPerfectPairs(a, b Card) (float64, string) {
+func EvalPerfectPairs(a, b *Card) (float64, string) {
 	if a.Rank != b.Rank {
 		return 0, "perdu"
 	}
@@ -79,7 +79,7 @@ func EvalPerfectPairs(a, b Card) (float64, string) {
 
 // EvalTwentyOnePlus3 évalue le pari 21+3 : les deux cartes du joueur et la
 // carte visible du croupier forment une main de poker à trois cartes.
-func EvalTwentyOnePlus3(a, b, up Card) (float64, string) {
+func EvalTwentyOnePlus3(a, b, up *Card) (float64, string) {
 	flush := a.Suit == b.Suit && b.Suit == up.Suit
 	trips := a.Rank == b.Rank && b.Rank == up.Rank
 	straight := isStraight(a, b, up)
@@ -101,7 +101,7 @@ func EvalTwentyOnePlus3(a, b, up Card) (float64, string) {
 
 // isStraight teste trois cartes pour une suite. L'As est évalué deux fois,
 // comme 14 pour reconnaître Dame-Roi-As et comme 1 pour reconnaître As-2-3.
-func isStraight(cards ...Card) bool {
+func isStraight(cards ...*Card) bool {
 	high := make([]int, 0, len(cards))
 	low := make([]int, 0, len(cards))
 	for _, c := range cards {
@@ -133,8 +133,8 @@ func consecutive(v []int) bool {
 // EvalLuckyLadies évalue le pari Lucky Ladies, qui paie si les deux premières
 // cartes du joueur totalisent 20. Le gain maximal combine une paire de Dames
 // de coeur et un blackjack du croupier.
-func EvalLuckyLadies(a, b Card, dealerBJ bool) (float64, string) {
-	h := &Hand{Cards: []Card{a, b}}
+func EvalLuckyLadies(a, b *Card, dealerBJ bool) (float64, string) {
+	h := &Hand{Cards: []*Card{a, b}}
 	total, _ := h.Total()
 	if total != 20 {
 		return 0, "perdu"
