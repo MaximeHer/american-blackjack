@@ -1,0 +1,11 @@
+# Normalise les fins de ligne : stockage en LF dans le dépôt, quelle que soit
+# la plateforme de travail. Évite que les diffs soient pollués par des
+# changements CRLF sous Windows.
+* text=auto eol=lf
+
+# Fichiers binaires, jamais convertis.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.prof binary
+*.out binary

@@ -1,0 +1,29 @@
+# Binaires compilés
+/simulate
+/simulate.exe
+*.exe
+*.test
+
+# Artefacts de profilage — régénérables, jamais versionnés
+*.prof
+*.out
+cpu.out
+mem.out
+block.out
+mutex.out
+trace.out
+*.pprof
+/profiles/
+
+# Résultats de mesure bruts
+/bench/*.txt
+/bench/*.json
+!/bench/.gitkeep
+
+# Couverture
+coverage.out
+coverage.html
+
+# Environnements
+.env
+.DS_Store
