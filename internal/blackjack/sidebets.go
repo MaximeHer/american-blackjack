@@ -8,10 +8,10 @@ import (
 // SideBets porte les montants misés sur chaque pari annexe. Un montant nul
 // signifie que le pari n'est pas joué, et son évaluation est alors sautée.
 type SideBets struct {
-	PerfectPairs   float64
-	TwentyOnePlus3 float64
-	LuckyLadies    float64
-	Buster         float64
+	PerfectPairs   float64 `json:"perfectPairs"`
+	TwentyOnePlus3 float64 `json:"twentyOnePlus3"`
+	LuckyLadies    float64 `json:"luckyLadies"`
+	Buster         float64 `json:"buster"`
 }
 
 // Total renvoie la somme engagée sur les paris annexes pour un coup.

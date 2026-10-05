@@ -148,7 +148,51 @@ consommable par un script de mesure.
 
 ---
 
-## 5. Oracle de non-régression
+## 5. Interface web
+
+Une table jouable, servie par un serveur Go qui réutilise le moteur.
+
+```bash
+go run ./cmd/server
+```
+
+Puis http://localhost:8080.
+
+```bash
+# Partie reproductible et table plus défavorable
+go run ./cmd/server -seed 42 -decks 8 -h17 -bankroll 500
+```
+
+Trois onglets :
+
+- **Table** — jeu complet avec les quatre paris annexes, séparations, doubles,
+  assurance et abandon. Raccourcis clavier `T` tirer, `R` rester, `D` doubler,
+  `S` séparer, `A` abandonner, `Entrée` distribuer. Une case à cocher affiche
+  le conseil de la stratégie de base sur le bouton recommandé.
+- **Stratégie** — la table de stratégie de base en grille colorée, **lue depuis
+  le code** et non recopiée, donc garantie identique à ce que la simulation
+  applique.
+- **Statistiques** — lancement de simulations, courbe de convergence de
+  l'avantage de la maison en échelle logarithmique avec sa bande de confiance à
+  95 %, et comparaison chiffrée des variantes de règles avec barres d'erreur.
+
+### Deux garde-fous d'architecture
+
+**Le serveur ne touche pas au chemin mesuré.** L'interface s'appuie sur un type
+`Table` distinct de `PlayRound` : la boucle de simulation reste non
+instrumentée, sans champ ajouté pour l'affichage et sans indirection, puisque
+c'est elle qui est mesurée. Les structures `Card`, `Hand` et `Shoe` ne portent
+aucun champ de présentation — l'état propre au jeu interactif vit dans des
+types séparés (`view.go`).
+
+**Aucune règle n'est implémentée côté navigateur.** La page affiche un état et
+transmet une action ; le serveur arbitre tout. Ce qu'on joue dans l'interface
+est donc exactement ce que le moteur simule, et `TestTableCrossValidation` le
+prouve en mesurant l'avantage de la maison par les deux chemins.
+
+---
+
+## 6. Oracle de non-régression
 
 C'est la pièce maîtresse du dispositif. L'avantage de la maison au blackjack
 est une grandeur **publiée** : le moteur doit la reproduire, ce qui permet de
@@ -189,7 +233,7 @@ cartes et décale l'avantage du jeu principal. L'oracle doit donc se mesurer
 
 ---
 
-## 6. Mesure de référence
+## 7. Mesure de référence
 
 Relevée sur la machine de développement, Go 1.26.4, windows/amd64 :
 
@@ -203,7 +247,7 @@ d'essai et d'un protocole statistique — voir [docs/](docs/).
 
 ---
 
-## 7. Choix volontairement naïfs de la baseline
+## 8. Choix volontairement naïfs de la baseline
 
 Chacun est documenté dans le code à l'endroit où il est fait, avec son coût
 physique. Ce sont les cibles du travail d'optimisation à venir.
@@ -219,11 +263,13 @@ physique. Ce sont les cibles du travail d'optimisation à venir.
 
 ---
 
-## 8. Structure
+## 9. Structure
 
 ```
 .
 ├── cmd/simulate/          # commande de simulation et rapport
+├── cmd/server/            # serveur web et interface de table
+│   └── web/               # page, styles et script de l'interface
 ├── internal/blackjack/
 │   ├── card.go            # représentation d'une carte
 │   ├── hand.go            # main, total, blackjack, paire
@@ -233,14 +279,18 @@ physique. Ce sont les cibles du travail d'optimisation à venir.
 │   ├── sidebets.go        # évaluation des quatre paris annexes
 │   ├── round.go           # déroulement d'un coup complet
 │   ├── sim.go             # boucle de simulation et statistiques
-│   └── blackjack_test.go  # oracle et tests de correction
+│   ├── table.go           # table jouable coup par coup (hors chemin mesuré)
+│   ├── view.go            # sérialisation de l'état vers l'interface
+│   ├── analysis.go        # données des figures du rapport
+│   ├── blackjack_test.go  # oracle et tests de correction
+│   └── table_test.go      # validation croisée Table / PlayRound
 ├── docs/                  # rapport d'audit et protocole de mesure
 └── constitution.md        # gouvernance technique des assistants IA
 ```
 
 ---
 
-## 9. Feuille de route d'optimisation
+## 10. Feuille de route d'optimisation
 
 Chaque palier fait l'objet d'une branche, d'une mesure isolée et d'une entrée
 au journal d'optimisation.

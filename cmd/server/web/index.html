@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>American Blackjack</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="pip red">&hearts;</span><span class="pip">&spades;</span>
+    <h1>American Blackjack</h1>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="table">Table</button>
+    <button class="tab-btn" data-tab="strategy">Stratégie</button>
+    <button class="tab-btn" data-tab="stats">Statistiques</button>
+  </nav>
+  <div class="rules-summary" id="rules-summary"></div>
+</header>
+
+<!-- ======================== TABLE ======================== -->
+<section class="panel active" id="tab-table">
+  <div class="felt">
+
+    <div class="shoe">
+      <div class="shoe-label">Sabot <span id="shoe-count"></span></div>
+      <div class="shoe-bar"><div class="shoe-fill" id="shoe-fill"></div><div class="cut-mark"></div></div>
+      <div class="shoe-label dim" id="shoe-shuffles"></div>
+    </div>
+
+    <div class="dealer-zone">
+      <div class="zone-label">Croupier</div>
+      <div class="cards" id="dealer-cards"></div>
+      <div class="total-badge" id="dealer-total"></div>
+    </div>
+
+    <div class="table-center">
+      <div class="arc">BLACKJACK PAIE 3 POUR 2</div>
+      <div class="arc small">L'assurance paie 2 pour 1</div>
+    </div>
+
+    <div class="banner" id="banner"></div>
+
+    <div class="player-zone" id="player-hands"></div>
+  </div>
+
+  <div class="dock">
+    <div class="dock-row">
+      <div class="money">
+        <span class="money-label">Solde</span>
+        <strong id="bankroll">—</strong>
+      </div>
+      <div class="money" id="roundnet-box" hidden>
+        <span class="money-label">Ce coup</span>
+        <strong id="roundnet">—</strong>
+      </div>
+      <button class="ghost" id="btn-reset">Nouvelle partie</button>
+    </div>
+
+    <!-- Mises -->
+    <div id="betting-ui">
+      <div class="chips" id="chips"></div>
+      <div class="spots">
+        <div class="spot main" data-spot="main">
+          <div class="spot-name">Mise</div>
+          <div class="spot-amount" data-amount="main">0</div>
+        </div>
+        <div class="spot" data-spot="perfectPairs">
+          <div class="spot-name">Perfect Pairs</div>
+          <div class="spot-amount" data-amount="perfectPairs">0</div>
+          <div class="spot-pay">25 / 12 / 6</div>
+        </div>
+        <div class="spot" data-spot="twentyOnePlus3">
+          <div class="spot-name">21+3</div>
+          <div class="spot-amount" data-amount="twentyOnePlus3">0</div>
+          <div class="spot-pay">100 / 40 / 30 / 10 / 5</div>
+        </div>
+        <div class="spot" data-spot="luckyLadies">
+          <div class="spot-name">Lucky Ladies</div>
+          <div class="spot-amount" data-amount="luckyLadies">0</div>
+          <div class="spot-pay">1000 / 200 / 25 / 10 / 4</div>
+        </div>
+        <div class="spot" data-spot="buster">
+          <div class="spot-name">Buster</div>
+          <div class="spot-amount" data-amount="buster">0</div>
+          <div class="spot-pay">jusqu'à 250</div>
+        </div>
+      </div>
+      <div class="bet-actions">
+        <button class="ghost" id="btn-clear">Retirer les mises</button>
+        <button class="ghost" id="btn-rebet">Remiser</button>
+        <button class="primary" id="btn-deal">Distribuer</button>
+      </div>
+    </div>
+
+    <!-- Actions de jeu -->
+    <div id="action-ui" hidden>
+      <div class="actions">
+        <button data-action="hit"><span class="key">T</span>Tirer</button>
+        <button data-action="stand"><span class="key">R</span>Rester</button>
+        <button data-action="double"><span class="key">D</span>Doubler</button>
+        <button data-action="split"><span class="key">S</span>Séparer</button>
+        <button data-action="surrender"><span class="key">A</span>Abandonner</button>
+        <button data-action="insure" class="insure">Assurance</button>
+        <button data-action="decline" class="insure">Refuser</button>
+      </div>
+      <label class="hint-toggle">
+        <input type="checkbox" id="hint-toggle">
+        Afficher le conseil de la stratégie de base
+      </label>
+    </div>
+
+    <div class="side-results" id="side-results"></div>
+  </div>
+</section>
+
+<!-- ======================== STRATÉGIE ======================== -->
+<section class="panel" id="tab-strategy">
+  <div class="doc">
+    <h2>Stratégie de base</h2>
+    <p>
+      Table optimale pour 4 à 8 jeux, croupier restant sur 17 souple, double
+      autorisé après séparation et abandon tardif autorisé. C'est exactement la
+      table que le moteur applique en simulation&nbsp;: la grille ci-dessous est
+      lue depuis le code, pas recopiée à la main.
+    </p>
+    <div class="legend">
+      <span class="lg d-H">Tirer</span>
+      <span class="lg d-S">Rester</span>
+      <span class="lg d-D">Doubler</span>
+      <span class="lg d-P">Séparer</span>
+      <span class="lg d-R">Abandonner</span>
+    </div>
+    <div id="strategy-grids"></div>
+  </div>
+</section>
+
+<!-- ======================== STATISTIQUES ======================== -->
+<section class="panel" id="tab-stats">
+  <div class="doc">
+    <h2>Mesure de l'avantage de la maison</h2>
+    <p>
+      L'écart-type du résultat par coup vaut environ <strong>1,14 unité de
+      mise</strong>, soit plus de trois fois l'avantage que l'on cherche à
+      mesurer. L'erreur-type décroissant en 1/&radic;n, il faut de l'ordre de
+      10<sup>8</sup> coups pour résoudre l'avantage à 0,01 point près.
+      <strong>Le débit du moteur conditionne donc la précision statistique
+      atteignable</strong> — c'est la justification physique du travail
+      d'optimisation.
+    </p>
+
+    <div class="sim-controls">
+      <label>Coups
+        <select id="sim-rounds">
+          <option value="100000">100 000</option>
+          <option value="1000000" selected>1 000 000</option>
+          <option value="5000000">5 000 000</option>
+          <option value="20000000">20 000 000</option>
+        </select>
+      </label>
+      <label>Jeux
+        <select id="sim-decks">
+          <option value="1">1</option>
+          <option value="4" selected>4</option>
+          <option value="6">6</option>
+          <option value="8">8</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="sim-h17"> Croupier tire sur 17 souple</label>
+      <label class="check"><input type="checkbox" id="sim-side"> Paris annexes</label>
+      <button class="primary" id="btn-sim">Lancer la simulation</button>
+    </div>
+
+    <div id="sim-out" class="metrics"></div>
+
+    <h3>Convergence de la mesure</h3>
+    <p class="dim">
+      Avantage cumulé et bande de confiance à 95 %, en échelle logarithmique.
+      La mesure oscille très largement sur les premiers milliers de coups avant
+      de se resserrer&nbsp;: c'est la décroissance en 1/&radic;n rendue visible.
+    </p>
+    <div class="chart-wrap">
+      <canvas id="chart-curve" width="1100" height="380"></canvas>
+    </div>
+    <button class="ghost" id="btn-curve">Tracer la convergence</button>
+
+    <h3>Impact des variantes de règles</h3>
+    <p class="dim">
+      Avantage de la maison mesuré pour chaque variante, avec sa barre
+      d'erreur. Toute variante dont la barre chevauche celle de la référence
+      n'est pas distinguable au nombre de coups utilisé.
+    </p>
+    <div class="chart-wrap">
+      <canvas id="chart-rules" width="1100" height="420"></canvas>
+    </div>
+    <button class="ghost" id="btn-rules">Comparer les règles</button>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

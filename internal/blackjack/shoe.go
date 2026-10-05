@@ -78,3 +78,6 @@ func (s *Shoe) CutReached() bool { return len(s.cards) <= s.cutAt }
 
 // Remaining renvoie le nombre de cartes encore dans le sabot.
 func (s *Shoe) Remaining() int { return len(s.cards) }
+
+// Size renvoie la taille nominale du sabot, soit 52 cartes par jeu.
+func (s *Shoe) Size() int { return s.numDecks * 52 }
