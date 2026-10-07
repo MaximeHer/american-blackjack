@@ -211,6 +211,7 @@ func TestStructSizes(t *testing.T) {
 	var h Hand
 	var rr RoundResult
 	var sh Shoe
+	var ru Rules
 
 	rows := []row{
 		{"Card", unsafe.Sizeof(c), unsafe.Sizeof(c)},
@@ -224,6 +225,13 @@ func TestStructSizes(t *testing.T) {
 				unsafe.Sizeof(rr.DealerBust) + unsafe.Sizeof(rr.SideWagered) + unsafe.Sizeof(rr.Hands) +
 				unsafe.Sizeof(rr.SideNet)},
 		{"Shoe", unsafe.Sizeof(sh), 0},
+		{"Rules", unsafe.Sizeof(ru),
+			unsafe.Sizeof(ru.Penetration) + unsafe.Sizeof(ru.BlackjackPayout) +
+				unsafe.Sizeof(ru.NumDecks) + unsafe.Sizeof(ru.MaxSplitHands) +
+				unsafe.Sizeof(ru.DealerHitsSoft17) + unsafe.Sizeof(ru.DoubleAnyTwo) +
+				unsafe.Sizeof(ru.DoubleAfterSplit) + unsafe.Sizeof(ru.ResplitAces) +
+				unsafe.Sizeof(ru.HitSplitAces) + unsafe.Sizeof(ru.LateSurrender) +
+				unsafe.Sizeof(ru.OfferInsurance)},
 	}
 
 	const cacheLine = 64
@@ -250,4 +258,9 @@ func TestStructSizes(t *testing.T) {
 	t.Logf("Un sabot de 4 jeux occupe %d octets contigus, soit %d lignes de cache,",
 		208*int(unsafe.Sizeof(c)), 208*int(unsafe.Sizeof(c))/cacheLine)
 	t.Logf("contre 6 656 octets sur 104 lignes et 208 objets disperses dans le tas.")
+	t.Logf("")
+	t.Logf("Tailles avant reordonnancement des champs : Hand 56 o (19 de remplissage),")
+	t.Logf("RoundResult 80 o (28), Rules 56 o (17). Le tri par taille decroissante")
+	t.Logf("les ramene respectivement a %d, %d et %d octets.",
+		unsafe.Sizeof(h), unsafe.Sizeof(rr), unsafe.Sizeof(ru))
 }

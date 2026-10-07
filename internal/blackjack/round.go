@@ -8,25 +8,25 @@ package blackjack
 // l'« element of risk ». Distinguer les deux est indispensable pour que les
 // chiffres du rapport soient comparables aux valeurs publiées.
 //
-// VERSION DE RÉFÉRENCE : l'ordre des champs est quelconque, les booléens
-// étant intercalés entre les champs de 8 octets. Go ne réordonne jamais les
-// champs, donc le remplissage inséré par le compilateur est réel et mesurable.
+// Champs ordonnés par taille décroissante : 80 octets pour 52 utiles avant
+// réordonnancement, soit 28 octets de remplissage (35 %).
 type RoundResult struct {
-	PlayerBJ    bool
 	MainWagered float64
-	DealerBJ    bool
 	Action      float64
+	MainNet     float64
+	SideWagered float64
+	SideNet     float64
+	Hands       int
+
+	PlayerBJ bool
+	DealerBJ bool
 	// DealerPlayed indique que le croupier a effectivement complété sa main.
 	// Il ne le fait pas quand le coup est déjà résolu — blackjack de part et
 	// d'autre, ou toutes les mains du joueur sautées. Les fréquences de
 	// dépassement du croupier doivent être rapportées à ce compteur, et non
 	// au nombre total de coups, sous peine d'être sous-estimées.
 	DealerPlayed bool
-	MainNet      float64
 	DealerBust   bool
-	SideWagered  float64
-	Hands        int
-	SideNet      float64
 }
 
 // PlayRound joue un coup complet de blackjack américain :

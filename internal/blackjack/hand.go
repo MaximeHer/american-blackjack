@@ -19,15 +19,20 @@ package blackjack
 //     bien plus faible qu'escompté, d'où le déclassement de ce palier en
 //     dernière position.
 //
-//  3. L'ordre des champs est quelconque : les booléens sont intercalés entre
-//     les champs de 8 octets, ce qui force le compilateur à insérer du
-//     remplissage. Go ne réordonne jamais les champs d'une structure, donc ce
-//     gaspillage est réel et mesurable par unsafe.Sizeof.
+// Les champs sont ordonnés par taille DÉCROISSANTE, conformément à la règle
+// d'alignement : le processeur exige que chaque champ débute à une adresse
+// multiple de sa taille, et Go ne réordonne jamais les champs. Des booléens
+// intercalés entre des champs de 8 octets forcent donc le compilateur à insérer
+// du remplissage invisible.
+//
+// Avant réordonnancement : 56 octets pour 37 octets utiles, soit 19 octets
+// perdus (34 %). Le gaspillage franchissait de plus une classe de taille de
+// l'allocateur Go, qui servait 64 octets au lieu de 48.
 type Hand struct {
-	Doubled     bool
-	Bet         float64
+	Cards       []Card  // 24 o
+	Bet         float64 // 8 o
+	Doubled     bool    // les booléens regroupés en fin de structure
 	FromSplit   bool
-	Cards       []Card
 	SplitAce    bool
 	Stood       bool
 	Surrendered bool

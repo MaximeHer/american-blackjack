@@ -15,12 +15,15 @@ import "math/rand"
 // des cartes, désormais par valeur dans un bloc contigu (rang 2). Un sabot de
 // 4 jeux occupe 208 octets sur 4 lignes de cache, contre 6 656 octets sur 104
 // lignes et 208 objets dispersés dans la version de référence.
+// Les champs contenant des pointeurs sont placés en tête : le ramasse-miettes
+// n'a alors à scanner que le préfixe de la structure, et s'arrête dès qu'il a
+// dépassé la dernière donnée de pointeur.
 type Shoe struct {
-	cards       []Card
-	numDecks    int
+	rng         *rand.Rand // 8 o de pointeur
+	cards       []Card     // 24 o dont 8 de pointeur
 	penetration float64
+	numDecks    int
 	cutAt       int
-	rng         *rand.Rand
 
 	Shuffles   int
 	CardsDealt int
