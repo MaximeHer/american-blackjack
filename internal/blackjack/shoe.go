@@ -4,29 +4,20 @@ import "math/rand"
 
 // Shoe est le sabot de plusieurs jeux mélangés, muni d'une carte de coupe.
 //
-// VERSION DE RÉFÉRENCE. Trois choix volontairement naïfs :
+// Choix volontairement naïfs restants :
 //
 //  1. Le sabot est un slice de POINTEURS vers des cartes allouées une par une.
 //     Un rebattage alloue donc 208 objets distincts plus le slice, et les
 //     cartes se retrouvent dispersées dans le tas.
 //
-//  2. Le mélange est l'algorithme intuitif : tirer une carte au hasard dans le
-//     paquet, la retirer, recommencer. Il est correct et uniforme, mais chaque
-//     retrait décale la fin du slice, ce qui le rend quadratique.
-//
-//     L'index tiré étant uniforme, le nombre moyen de déplacements vaut
-//     n(n-1)/4, soit 208 x 207 / 4 = 10 764 pour un sabot de 4 jeux. Le
-//     comptage instrumenté mesure 10 756 : la théorie est vérifiée. Pour le
-//     même résultat, Fisher-Yates effectue 208 échanges sur place, soit un
-//     facteur 52.
-//
-//  3. La distribution retire la carte de tête par re-slicing, ce qui interdit
+//  2. La distribution retire la carte de tête par re-slicing, ce qui interdit
 //     de réutiliser le tableau sous-jacent et impose de tout reconstruire au
 //     rebattage.
 //
+// Le mélange, lui, a été corrigé au rang 1 du profil : voir Shuffle.
+//
 // La version optimisée gardera un tableau fixe de cartes compactes et un
-// simple curseur d'index : aucune allocation, accès strictement séquentiel,
-// et un mélange en place.
+// simple curseur d'index : aucune allocation, accès strictement séquentiel.
 type Shoe struct {
 	cards       []*Card
 	numDecks    int
@@ -53,37 +44,60 @@ func NewShoe(numDecks int, penetration float64, rng *rand.Rand) *Shoe {
 
 // Shuffle reconstruit le sabot complet, le mélange et repositionne la carte de
 // coupe.
+//
+// RANG 1 DU PROFIL. Le mélange est désormais un Fisher-Yates en place.
+//
+// La version de référence tirait une carte au hasard puis la retirait du paquet.
+// L'algorithme était correct et uniforme, mais chaque retrait décalait tous les
+// éléments situés après l'index tiré. L'index étant uniforme, le nombre moyen de
+// déplacements valait n(n-1)/4, soit 10 764 pour n = 208 — le comptage
+// instrumenté en mesurait 10 756.
+//
+// Fisher-Yates obtient la même distribution en n-1 = 207 échanges sur place,
+// sans jamais décaler quoi que ce soit : un facteur 52 sur le nombre de
+// déplacements.
+//
+// La capacité est de plus réservée d'un coup, ce qui supprime les
+// réallocations successives du slice au fil des append.
+//
+// Ce que ce palier NE fait PAS : les cartes restent allouées une par une
+// derrière des pointeurs. C'est le rang 2 du profil, et les deux coûts sont
+// mesurés séparément parce que le profil les distingue — ligne 62 pour
+// l'allocation, ligne 80 pour le décalage.
 func (s *Shoe) Shuffle() {
-	// Construction du paquet : une allocation par carte.
-	pool := []*Card{}
+	size := s.numDecks * 52
+
+	// Capacité réservée d'un coup : plus aucune réallocation pendant le
+	// remplissage. L'allocation d'une carte par carte subsiste, elle sera
+	// traitée au rang 2.
+	cards := make([]*Card, 0, size)
 	for d := 0; d < s.numDecks; d++ {
 		for _, r := range AllRanks {
 			for _, su := range AllSuits {
-				pool = append(pool, &Card{Rank: r, Suit: su})
+				cards = append(cards, &Card{Rank: r, Suit: su})
 			}
 		}
 	}
 
-	// Mélange naïf : on tire une carte au hasard et on la retire du paquet.
-	// Correct, mais quadratique à cause du décalage provoqué par chaque
-	// retrait.
-	shuffled := []*Card{}
-	for len(pool) > 0 {
-		i := s.rng.Intn(len(pool))
-		shuffled = append(shuffled, pool[i])
-		// Le retrait décale tous les éléments situés après i. C'est la source
-		// du comportement quadratique, et le comptage ci-dessous le prouve
-		// chiffres en main plutôt que par raisonnement.
+	// Fisher-Yates : on parcourt le tableau de la fin vers le début et on
+	// échange chaque élément avec un élément tiré parmi lui-même et ceux qui le
+	// précèdent. Chaque position est ainsi fixée définitivement en un échange,
+	// et la distribution obtenue est uniforme sur les n! permutations.
+	for i := len(cards) - 1; i > 0; i-- {
+		j := s.rng.Intn(i + 1)
+		cards[i], cards[j] = cards[j], cards[i]
 		if Instrumented {
-			countShuffleMoves(len(pool) - i - 1)
+			// Un échange déplace un élément vers sa position définitive. Le
+			// compteur reste donc comparable à celui de la version de
+			// référence, qui comptait les décalages.
+			countShuffleMoves(1)
 		}
-		pool = append(pool[:i], pool[i+1:]...)
 	}
 
-	s.cards = shuffled
+	s.cards = cards
 	// La coupe est placée de sorte qu'il reste (1 - penetration) du sabot
 	// quand elle sort.
-	s.cutAt = len(shuffled) - int(float64(len(shuffled))*s.penetration)
+	s.cutAt = size - int(float64(size)*s.penetration)
 	s.Shuffles++
 }
 
