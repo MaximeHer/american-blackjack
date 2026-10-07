@@ -38,10 +38,31 @@ type Hand struct {
 	Surrendered bool
 }
 
+// totalMemo mémoïse les totaux déjà calculés.
+//
+// TENTATIVE D'OPTIMISATION. Le raisonnement paraît solide : le binaire
+// instrumenté mesure 10,38 appels à Total() par coup, dont beaucoup portent sur
+// la même main — la stratégie, le test de dépassement et la comparaison finale
+// interrogent tous la même main sans qu'elle ait changé. Mettre le résultat en
+// cache devrait donc supprimer la majorité du travail.
+//
+// Voir docs/04-echec-constructif.md pour la mesure et l'explication de l'échec.
+var totalMemo = map[string][2]int{}
+
 // Total renvoie le meilleur total de la main et indique si elle est souple,
 // c'est-à-dire si un As y compte encore 11.
 func (h *Hand) Total() (int, bool) {
 	countHandTotal()
+
+	// Construction de la clé : la suite des cartes de la main.
+	key := make([]byte, len(h.Cards))
+	for i, c := range h.Cards {
+		key[i] = byte(c)
+	}
+	if v, ok := totalMemo[string(key)]; ok {
+		return v[0], v[1] == 1
+	}
+
 	total := 0
 	aces := 0
 	for _, c := range h.Cards {
@@ -55,6 +76,12 @@ func (h *Hand) Total() (int, bool) {
 		total -= 10
 		aces--
 	}
+
+	soft := 0
+	if aces > 0 {
+		soft = 1
+	}
+	totalMemo[string(key)] = [2]int{total, soft}
 	return total, aces > 0
 }
 
