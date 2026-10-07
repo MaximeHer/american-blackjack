@@ -250,7 +250,79 @@ avant aurait été du travail perdu.
 
 ---
 
-## 8. Reproduire ce diagnostic
+## 8. Second profil, après les rangs 1 et 2
+
+Le protocole exige de reprofiler entre les paliers, chacun déplaçant le goulot.
+Relevé après Fisher-Yates (rang 1) et la carte sur un octet (rang 2), sur 7,53 s
+dont 5,78 s dans `Simulate`.
+
+### Le goulot a entièrement basculé
+
+| Fonction | Part de `Simulate` | Avant les rangs 1-2 |
+|---|---|---|
+| **`decideBasic`** | **52 %** | 26 % |
+| **`fmt.Sprintf`** | **33 %** | n'apparaissait pas isolément |
+| `runtime.mallocgc` | 32 % | 23 % |
+| `fmt.(*pp).doPrintf` | 20 % | — |
+| `runtime.bgsweep` | 18 % | 21 % |
+| `runtime.convTstring` | 12 % | — |
+| **`Shoe.Shuffle`** | **12 %** | **32 %** |
+
+`Shoe.Shuffle`, qui dominait tout, est passée de 32 % à 12 % du CPU et de
+**48 % à 0,6 % des objets alloués**. Elle n'est plus un sujet.
+
+### Une seule ligne concentre maintenant 35 % du programme
+
+```
+      60ms      3.03s (flat, cum) 40.24% of Total
+      10ms       10ms    140:func decideBasic(h *Hand, up Card, r Rules, handCount int) string {
+      10ms       10ms    148:		rank := h.Cards[0].NormalizedRank()
+      40ms      2.64s    166:	d, ok := strategyTable[fmt.Sprintf("%s-%d-%s", kind, total, upKey)]
+```
+
+**`strategy.go:166` coûte 2,64 s**, soit 35 % du temps total et 87 % du coût de
+`decideBasic`. Elle cumule un formatage, une allocation, une conversion en
+chaîne et un hachage, pour aller chercher une valeur dans un domaine de
+3 × 17 × 10 cases.
+
+### Allocations
+
+| Fonction | Objets | Octets |
+|---|---|---|
+| **`decideBasic`** | **65,5 %** | 41,3 % |
+| `PlayRound` | 21,6 % flat | 45,5 % flat |
+| `fmt.Sprintf` | 21,3 % | 13,4 % |
+| `Hand.Add` | 12,3 % | 7,7 % |
+| `Shoe.Shuffle` | **0,6 %** | — |
+
+### Ordre mis à jour
+
+| Rang | Cible | Poids mesuré | Évolution |
+|---|---|---|---|
+| **1** | **Table de stratégie plate indexée** | **2,64 s, 35 % du total** | était rang 4, passe en tête |
+| 2 | Mains en tableaux fixes (`Hand.Add`) | 12,3 % des objets | monte |
+| 3 | Sabot en tableau fixe et curseur | 0,6 % des objets, 12 % du CPU | **déclassé** |
+| 4 | Total incrémental | résiduel — `HandTotal` est à 3,2 ns | déclassé, sans objet |
+
+Deux déclassements que le profil impose. Le **sabot en tableau fixe** ne vaut
+plus grand-chose : il ne reste qu'une allocation par rebattage, soit 0,6 % des
+objets. Le **total incrémental** n'a plus d'objet du tout : `HandTotal` est
+tombé à 3,2 ns, la carte compactée ayant supprimé la cause réelle de son coût —
+exactement ce que la section 7 avait anticipé en le déclassant par avance.
+
+### Ce que ce second profil démontre
+
+Un palier ne se contente pas de réduire un coût : il **réordonne tous les
+suivants**. Après les rangs 1 et 2, trois des quatre priorités restantes avaient
+changé de place, et deux sont devenues sans intérêt.
+
+C'est la justification empirique de la règle « reprofiler entre les paliers ».
+Un plan d'optimisation écrit d'avance et suivi jusqu'au bout aurait dépensé deux
+paliers sur le sabot et le total incrémental, pour un gain désormais négligeable.
+
+---
+
+## 9. Reproduire ce diagnostic
 
 ```bash
 bash scripts/run_benchmarks.sh profile   # génère les profils et toutes les analyses

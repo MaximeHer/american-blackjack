@@ -713,15 +713,16 @@ raisonnement a priori.
 
 ```
 FAIT   palier 1     journal narratif explicite      -47 % sur PlayRound
-FAIT   palier 2     tables de gains en entiers      neutre au global (documente)
-FAIT   palier 3     strategie devirtualisee         -10,6 % sur Decide
+FAIT   palier 2     tables de gains en entiers       neutre au global (documente)
+FAIT   palier 3     strategie devirtualisee          -10,6 % sur Decide
+FAIT   rang 1       melange de Fisher-Yates en place -42 % sur Shuffle
+FAIT   rang 2       carte sur 1 octet par valeur     geomean -83 %, debit x6,1
+   ↓  REPROFILAGE : le goulot a entierement basculé (docs/03 section 8)
    ↓
-1      melange de Fisher-Yates en place             540 ms, 7,2 % du total
-2      carte sur 1 octet stockee par valeur         1,57 s + 640 ms, 29 %
-3      sabot en tableau fixe et curseur             73 % des octets alloues
-4      table de strategie plate indexee             920 ms, 12 %
-5      mains en tableaux fixes                      6,6 % des objets
-6      total incremental (declasse)                 residuel apres le rang 2
+1      table de strategie plate indexee             2,64 s, 35 % du total
+2      mains en tableaux fixes (Hand.Add)           12,3 % des objets
+3      sabot en tableau fixe (declasse)             0,6 % des objets
+4      total incremental (sans objet)               HandTotal deja a 3,2 ns
    ↓
 Echec  generateur pseudo-aleatoire partage          AVANT de paralleliser
    ↓
