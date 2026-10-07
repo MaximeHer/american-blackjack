@@ -40,10 +40,11 @@ identification formelle du hot path.
 
 | Élément | État |
 |---|---|
-| Profil CPU (`-cpuprofile`) | à faire |
-| Profil d'allocations (`-memprofile`, `-benchmem`) | à faire |
-| Flamegraph annoté | à faire |
-| Analyse textuelle du goulot | à faire |
+| Profil CPU (`-cpuprofile`) | **acquis** — 7,52 s d'échantillons, voir [03-profiling.md](03-profiling.md) |
+| Profil d'allocations (`-memprofile`, `-benchmem`) | **acquis** — par objets et par octets |
+| Annotations ligne par ligne (`pprof -list`) | **acquis** — les 4 lignes qui font 49 % du temps |
+| Analyse textuelle du goulot | **acquis** — § 5, identification formelle |
+| Flamegraph | commande documentée (`pprof -http`), capture à joindre au rapport |
 
 **Suspects désignés par les benchmarks, à confirmer par le profil** :
 
@@ -54,8 +55,18 @@ identification formelle du hot path.
 | `Decide` | 264 ns, **3 allocs** | `fmt.Sprintf` pour la clé, puis hachage de `map` |
 | `Simulate` 10⁴ coups | **16,5 Mo, 469 801 allocs** | pression ramasse-miettes : 1,65 Go par million de coups |
 
-Ne pas présupposer l'ordre d'importance : le profil CPU et le profil
-d'allocations tranchent.
+**Le profil a tranché, et il a corrigé l'ordre de travail.** Les trois
+mécanismes limitants sont le hachage de chaînes (27 % du CPU), l'allocation et
+son ramassage (≈ 40 %), et le déplacement de mémoire du mélange quadratique.
+Quatre lignes de code totalisent 49 % du temps.
+
+`Shoe.Shuffle` représente 32 % du CPU et **73 % des octets alloués** : elle
+était placée aux paliers 7 et 8 sur 18. L'ordre a été révisé en conséquence —
+voir [03-profiling.md § 7](03-profiling.md).
+
+Enseignement de méthode, documenté plutôt que masqué : sans profil, le
+raisonnement a priori identifie bien les problèmes mais se trompe sur leur
+poids relatif.
 
 ---
 

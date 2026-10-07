@@ -8,6 +8,25 @@ chiffre annoncé ici est une *hypothèse à vérifier*, jamais un acquis. Les
 mesures réelles s'inscrivent au fur et à mesure dans le journal d'optimisation
 du rapport d'audit.
 
+> ## ⚠ Ordre révisé après profilage
+>
+> **L'ordre des phases ci-dessous a été établi AVANT tout profilage, et il était
+> partiellement faux.** Le profil réel — voir
+> [03-profiling.md](03-profiling.md) — montre que `Shoe.Shuffle`, placée ici aux
+> paliers 7 et 8, représente à elle seule **32 % du CPU et 73 % des octets
+> alloués**, tandis que le palier 2 visait une fonction absente du top 16.
+>
+> **L'ordre qui fait foi est celui de [03-profiling.md § 7](03-profiling.md).**
+> Les descriptions de paliers ci-dessous restent valides — hypothèses,
+> commandes de vérification, conditions de réfutation — mais leur numérotation
+> ne dicte plus la séquence.
+>
+> Changements principaux : le mélange passe en tête ; les anciens paliers 4 et 5
+> fusionnent, car on ne peut pas indexer un tableau par le rang d'une carte sans
+> rang numérique ; le palier « total incrémental » est déclassé en dernier,
+> le profil montrant que son coût réside dans `Card.Value` et non dans sa
+> logique.
+
 ---
 
 ## 0. Méthode
@@ -686,18 +705,29 @@ documenté en profondeur ; les autres seront mentionnés.
 
 ---
 
-## Ordre d'exécution recommandé
+## Ordre d'exécution — révisé par le profil
+
+L'ordre ci-dessous **remplace** le découpage en phases. Il est établi d'après
+les poids mesurés dans [03-profiling.md](03-profiling.md), et non d'après un
+raisonnement a priori.
 
 ```
-Phase A  (1 → 3)    gains faciles, validation du protocole de mesure
+FAIT   palier 1     journal narratif explicite      -47 % sur PlayRound
+FAIT   palier 2     tables de gains en entiers      neutre au global (documente)
+FAIT   palier 3     strategie devirtualisee         -10,6 % sur Decide
    ↓
-Phase B  (4 → 12)   représentation des données — le palier 5 débloque le reste
+1      melange de Fisher-Yates en place             540 ms, 7,2 % du total
+2      carte sur 1 octet stockee par valeur         1,57 s + 640 ms, 29 %
+3      sabot en tableau fixe et curseur             73 % des octets alloues
+4      table de strategie plate indexee             920 ms, 12 %
+5      mains en tableaux fixes                      6,6 % des objets
+6      total incremental (declasse)                 residuel apres le rang 2
    ↓
-Échec B             le générateur partagé, AVANT de paralléliser correctement
+Echec  generateur pseudo-aleatoire partage          AVANT de paralleliser
    ↓
-Phase C  (13 → 16)  concurrence, en partant du code déjà optimisé
+       concurrence : worker pool, graines derivees, arret precoce
    ↓
-Phase D  (17 → 18)  I/O et persistance
+       I/O binaire et persistance indexee
 ```
 
 **Pourquoi l'échec B avant la phase C.** Tenter d'abord la parallélisation
@@ -706,10 +736,15 @@ appliquer la dérivation de graines : la démonstration est bien plus forte dans
 cet ordre, et c'est l'ordre dans lequel un ingénieur rencontre réellement le
 problème.
 
-**Pourquoi la phase B avant la phase C.** Paralléliser un code inefficace
-multiplie l'inefficacité par le nombre de coeurs. Optimiser le travail d'un
-seul coeur d'abord donne une base saine, et rend la mesure d'accélération
-interprétable.
+**Pourquoi le mono-coeur avant la concurrence.** Paralléliser un code
+inefficace multiplie l'inefficacité par le nombre de coeurs. Optimiser le
+travail d'un seul coeur d'abord donne une base saine, et rend la mesure
+d'accélération interprétable.
+
+**Pourquoi reprofiler entre les rangs.** Chaque palier déplace le goulot
+d'étranglement. L'ordre ci-dessus est établi sur le profil actuel ; il doit
+être réexaminé après le rang 2, qui supprime à lui seul 29 % du temps et
+redistribuera tout le reste.
 
 ---
 

@@ -13,6 +13,8 @@ block.out
 mutex.out
 trace.out
 *.pprof
+# Les profils sont regenerables et dependent du materiel : seules leurs
+# conclusions sont versionnees, dans docs/03-profiling.md.
 /profiles/
 
 # Résultats de mesure bruts, régénérables.
