@@ -92,10 +92,10 @@ func BenchmarkDeal(b *testing.B) {
 // appelée plusieurs fois par décision, ce qui en fait la plus chaude du
 // moteur.
 func BenchmarkHandTotal(b *testing.B) {
-	h := &Hand{Cards: []*Card{
-		{Rank: "A", Suit: "Pique"},
-		{Rank: "7", Suit: "Coeur"},
-		{Rank: "5", Suit: "Carreau"},
+	h := &Hand{Cards: []Card{
+		newCard(rankAce, suitPique),
+		newCard(rank7, suitCoeur),
+		newCard(rank5, suitCarreau),
 	}}
 
 	b.ReportAllocs()
@@ -113,11 +113,11 @@ func BenchmarkHandTotal(b *testing.B) {
 // le moteur n'emprunte plus.
 func BenchmarkDecide(b *testing.B) {
 	r := DefaultRules()
-	h := &Hand{Cards: []*Card{
-		{Rank: "10", Suit: "Pique"},
-		{Rank: "6", Suit: "Coeur"},
+	h := &Hand{Cards: []Card{
+		newCard(rank10, suitPique),
+		newCard(rank6, suitCoeur),
 	}}
-	up := &Card{Rank: "9", Suit: "Trefle"}
+	up := newCard(rank9, suitTrefle)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -129,9 +129,9 @@ func BenchmarkDecide(b *testing.B) {
 // BenchmarkSideBetEval isole l'évaluation des paris annexes, dont le 21+3 qui
 // trie trois cartes pour détecter une suite.
 func BenchmarkSideBetEval(b *testing.B) {
-	a := &Card{Rank: "5", Suit: "Pique"}
-	c2 := &Card{Rank: "6", Suit: "Pique"}
-	up := &Card{Rank: "7", Suit: "Pique"}
+	a := newCard(rank5, suitPique)
+	c2 := newCard(rank6, suitPique)
+	up := newCard(rank7, suitPique)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -173,8 +173,7 @@ func TestStructSizes(t *testing.T) {
 	var sh Shoe
 
 	rows := []row{
-		{"Card", unsafe.Sizeof(c),
-			unsafe.Sizeof(c.Rank) + unsafe.Sizeof(c.Suit)},
+		{"Card", unsafe.Sizeof(c), unsafe.Sizeof(c)},
 		{"Hand", unsafe.Sizeof(h),
 			unsafe.Sizeof(h.Doubled) + unsafe.Sizeof(h.Bet) + unsafe.Sizeof(h.FromSplit) +
 				unsafe.Sizeof(h.Cards) + unsafe.Sizeof(h.SplitAce) + unsafe.Sizeof(h.Stood) +
@@ -201,11 +200,14 @@ func TestStructSizes(t *testing.T) {
 		t.Logf("%-14s %4d o %6d o %10s %s", r.name, r.size, r.fields, pad, per)
 	}
 
-	// Une carte compacte tiendrait dans un octet : rang sur 4 bits, enseigne
-	// sur 2 bits. Le rapport entre les deux est l'enjeu du premier palier.
+	// Depuis le rang 2 du profil, une carte occupe un octet et se stocke par
+	// valeur. La version de référence en utilisait 32, par pointeur.
 	t.Logf("")
-	t.Logf("Une carte compacte occuperait 1 octet, soit un facteur %d sur la représentation,", unsafe.Sizeof(c))
-	t.Logf("et %d cartes par ligne de cache au lieu de %d.", cacheLine, cacheLine/int(unsafe.Sizeof(c)))
-	t.Logf("Les cartes étant de plus manipulées par pointeur, chacune est allouée")
-	t.Logf("séparément et aucune garantie de localité ne subsiste.")
+	t.Logf("Card occupe %d octet(s), contre 32 dans la version de référence : facteur %d.",
+		unsafe.Sizeof(c), 32/int(unsafe.Sizeof(c)))
+	t.Logf("Une ligne de cache de %d octets contient donc %d cartes, contre 2 avant.",
+		cacheLine, cacheLine/int(unsafe.Sizeof(c)))
+	t.Logf("Un sabot de 4 jeux occupe %d octets contigus, soit %d lignes de cache,",
+		208*int(unsafe.Sizeof(c)), 208*int(unsafe.Sizeof(c))/cacheLine)
+	t.Logf("contre 6 656 octets sur 104 lignes et 208 objets disperses dans le tas.")
 }

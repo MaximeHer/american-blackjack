@@ -54,8 +54,8 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 	p2 := s.Deal()
 	hole := s.Deal()
 
-	dealer := &Hand{Cards: []*Card{up, hole}}
-	hands := []*Hand{{Cards: []*Card{p1, p2}, Bet: bet}}
+	dealer := &Hand{Cards: []Card{up, hole}}
+	hands := []*Hand{{Cards: []Card{p1, p2}, Bet: bet}}
 
 	if tr != nil {
 		tr.add("Mise de %.2f sur la case principale.", bet)
@@ -182,12 +182,12 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 				// moitié reçoit une carte.
 				second := h.Cards[1]
 				nh := &Hand{
-					Cards:     []*Card{second},
+					Cards:     []Card{second},
 					Bet:       bet,
 					FromSplit: true,
 					SplitAce:  second.IsAce(),
 				}
-				h.Cards = []*Card{h.Cards[0]}
+				h.Cards = []Card{h.Cards[0]}
 				h.FromSplit = true
 				h.SplitAce = h.Cards[0].IsAce()
 				h.Add(s.Deal())

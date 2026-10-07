@@ -6,20 +6,17 @@ import "math/rand"
 //
 // Choix volontairement naïfs restants :
 //
-//  1. Le sabot est un slice de POINTEURS vers des cartes allouées une par une.
-//     Un rebattage alloue donc 208 objets distincts plus le slice, et les
-//     cartes se retrouvent dispersées dans le tas.
+//  1. La distribution retire la carte de tête par re-slicing, ce qui interdit
+//     de réutiliser le tableau sous-jacent et impose de réallouer le slice à
+//     chaque rebattage. C'est le rang 3 du profil : un tableau fixe et un
+//     curseur d'index supprimeront la dernière allocation.
 //
-//  2. La distribution retire la carte de tête par re-slicing, ce qui interdit
-//     de réutiliser le tableau sous-jacent et impose de tout reconstruire au
-//     rebattage.
-//
-// Le mélange, lui, a été corrigé au rang 1 du profil : voir Shuffle.
-//
-// La version optimisée gardera un tableau fixe de cartes compactes et un
-// simple curseur d'index : aucune allocation, accès strictement séquentiel.
+// Déjà corrigé : le mélange, par Fisher-Yates en place (rang 1), et le stockage
+// des cartes, désormais par valeur dans un bloc contigu (rang 2). Un sabot de
+// 4 jeux occupe 208 octets sur 4 lignes de cache, contre 6 656 octets sur 104
+// lignes et 208 objets dispersés dans la version de référence.
 type Shoe struct {
-	cards       []*Card
+	cards       []Card
 	numDecks    int
 	penetration float64
 	cutAt       int
@@ -67,14 +64,15 @@ func NewShoe(numDecks int, penetration float64, rng *rand.Rand) *Shoe {
 func (s *Shoe) Shuffle() {
 	size := s.numDecks * 52
 
-	// Capacité réservée d'un coup : plus aucune réallocation pendant le
-	// remplissage. L'allocation d'une carte par carte subsiste, elle sera
-	// traitée au rang 2.
-	cards := make([]*Card, 0, size)
+	// Une seule allocation pour tout le sabot, au lieu de 208 objets distincts :
+	// les cartes étant des octets, elles tiennent par valeur dans un bloc
+	// contigu. Il ne reste que l'allocation du slice lui-même, que le rang 3
+	// supprimera.
+	cards := make([]Card, 0, size)
 	for d := 0; d < s.numDecks; d++ {
-		for _, r := range AllRanks {
-			for _, su := range AllSuits {
-				cards = append(cards, &Card{Rank: r, Suit: su})
+		for r := uint8(0); r < rankCount; r++ {
+			for su := uint8(0); su < suitCount; su++ {
+				cards = append(cards, newCard(r, su))
 			}
 		}
 	}
@@ -103,7 +101,7 @@ func (s *Shoe) Shuffle() {
 
 // Deal distribue la carte suivante. Par sécurité, un sabot épuisé est rebattu,
 // mais la carte de coupe doit normalement provoquer le rebattage bien avant.
-func (s *Shoe) Deal() *Card {
+func (s *Shoe) Deal() Card {
 	if len(s.cards) == 0 {
 		s.Shuffle()
 	}

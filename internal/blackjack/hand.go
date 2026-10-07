@@ -2,29 +2,32 @@ package blackjack
 
 // Hand représente une main, celle du joueur comme celle du croupier.
 //
-// VERSION DE RÉFÉRENCE. Trois choix volontairement naïfs :
+// RANG 2 DU PROFIL : les cartes sont désormais stockées PAR VALEUR. Chacune
+// occupant un octet, un slice de cartes est un bloc d'octets contigu, et
+// parcourir une main ne déréférence plus rien. La localité est rétablie.
 //
-//  1. Les cartes sont un slice de POINTEURS, alimenté par append. Chaque
-//     tirage peut réallouer et recopier, et chaque lecture d'une carte
-//     déréférence un pointeur vers une zone du tas sans rapport avec ses
-//     voisines. La main n'a aucune localité.
+// Choix volontairement naïfs restants :
+//
+//  1. Le slice est alimenté par append, donc un tirage peut encore réallouer.
+//     Une main ne pouvant excéder 21 cartes, un tableau fixe suffirait. C'est
+//     le rang 5 du profil.
 //
 //  2. Le total est recalculé intégralement à chaque appel de Total(), alors
-//     qu'il pourrait être maintenu en incrémental dans trois octets. Total()
-//     est appelé plusieurs fois par décision — stratégie, test de
-//     dépassement, comparaison finale — ce qui en fait la fonction la plus
-//     chaude du moteur.
+//     qu'il pourrait être maintenu en incrémental. Le profil a toutefois montré
+//     que 1,43 s des 1,68 s de Total venaient de Card.Value, c'est-à-dire de la
+//     consultation de map que ce palier supprime : le gain restant sera donc
+//     bien plus faible qu'escompté, d'où le déclassement de ce palier en
+//     dernière position.
 //
 //  3. L'ordre des champs est quelconque : les booléens sont intercalés entre
 //     les champs de 8 octets, ce qui force le compilateur à insérer du
 //     remplissage. Go ne réordonne jamais les champs d'une structure, donc ce
-//     gaspillage est réel et mesurable par unsafe.Sizeof. Regrouper les
-//     booléens en fin de structure suffirait à le supprimer.
+//     gaspillage est réel et mesurable par unsafe.Sizeof.
 type Hand struct {
 	Doubled     bool
 	Bet         float64
 	FromSplit   bool
-	Cards       []*Card
+	Cards       []Card
 	SplitAce    bool
 	Stood       bool
 	Surrendered bool
@@ -70,12 +73,17 @@ func (h *Hand) IsBlackjack() bool {
 // IsPair indique si la main peut être séparée. Deux cartes de valeur 10 de
 // rangs différents (un Roi et une Dame) forment une paire séparable.
 func (h *Hand) IsPair() bool {
-	return len(h.Cards) == 2 &&
-		h.Cards[0].NormalizedRank() == h.Cards[1].NormalizedRank()
+	if len(h.Cards) != 2 {
+		return false
+	}
+	a, b := h.Cards[0], h.Cards[1]
+	// Deux cartes de valeur 10 forment une paire séparable même de rangs
+	// différents : la comparaison porte donc sur la valeur, pas sur le rang.
+	return a.SameRank(b) || (a.IsTenValue() && b.IsTenValue())
 }
 
 // Add ajoute une carte à la main.
-func (h *Hand) Add(c *Card) { h.Cards = append(h.Cards, c) }
+func (h *Hand) Add(c Card) { h.Cards = append(h.Cards, c) }
 
 // Describe énumère les cartes de la main en clair, pour le journal narratif.
 //

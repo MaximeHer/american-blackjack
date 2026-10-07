@@ -25,8 +25,8 @@ const (
 // decideBasic. Les deux besoins sont ainsi satisfaits sans que l'un ne grève
 // l'autre.
 type Strategy interface {
-	Decide(h *Hand, up *Card, r Rules, handCount int) string
-	TakeInsurance(up *Card) bool
+	Decide(h *Hand, up Card, r Rules, handCount int) string
+	TakeInsurance(up Card) bool
 	Name() string
 }
 
@@ -39,12 +39,12 @@ type BasicStrategy struct{}
 func (b *BasicStrategy) Name() string { return "stratégie de base" }
 
 // Decide satisfait l'interface Strategy en déléguant à la fonction libre.
-func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string {
+func (b *BasicStrategy) Decide(h *Hand, up Card, r Rules, handCount int) string {
 	return decideBasic(h, up, r, handCount)
 }
 
 // TakeInsurance satisfait l'interface Strategy en déléguant à la fonction libre.
-func (b *BasicStrategy) TakeInsurance(up *Card) bool { return takeInsuranceBasic(up) }
+func (b *BasicStrategy) TakeInsurance(up Card) bool { return takeInsuranceBasic(up) }
 
 // dealerColumns donne l'ordre des colonnes dans les tables ci-dessous :
 // la carte visible du croupier, de 2 à l'As.
@@ -137,7 +137,7 @@ func init() {
 //
 // handCount est le nombre de mains déjà en jeu pour ce coup, nécessaire pour
 // savoir si un split supplémentaire est encore autorisé.
-func decideBasic(h *Hand, up *Card, r Rules, handCount int) string {
+func decideBasic(h *Hand, up Card, r Rules, handCount int) string {
 	countDecide()
 	upKey := up.NormalizedRank()
 	total, soft := h.Total()
@@ -178,16 +178,16 @@ func decideBasic(h *Hand, up *Card, r Rules, handCount int) string {
 // takeInsuranceBasic décide de prendre ou non l'assurance. La stratégie de base
 // la refuse toujours : sans comptage de cartes, c'est un pari dont l'espérance
 // est négative d'environ 7 %.
-func takeInsuranceBasic(up *Card) bool { return false }
+func takeInsuranceBasic(up Card) bool { return false }
 
 // Decide applique la stratégie de base. Appel statique, inlinable, sans
 // indirection par table de méthodes.
-func Decide(h *Hand, up *Card, r Rules, handCount int) string {
+func Decide(h *Hand, up Card, r Rules, handCount int) string {
 	return decideBasic(h, up, r, handCount)
 }
 
 // TakeInsurance applique la stratégie de base.
-func TakeInsurance(up *Card) bool { return takeInsuranceBasic(up) }
+func TakeInsurance(up Card) bool { return takeInsuranceBasic(up) }
 
 // canSplit vérifie qu'une paire est effectivement séparable compte tenu des
 // règles : une paire d'As déjà issue d'un split ne se resépare que si la table

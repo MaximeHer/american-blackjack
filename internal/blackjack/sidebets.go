@@ -129,6 +129,14 @@ var sideLabels = [outcomeCount]string{
 	Buster8Plus: "croupier sauté en 8 cartes ou plus",
 }
 
+// queenHearts est la Dame de coeur, seule carte nommée du règlement : le gain
+// maximal de Lucky Ladies exige une paire de celles-ci.
+//
+// Une carte tenant dans un octet, la comparaison devient une égalité d'entiers,
+// là où la version de référence comparait deux chaînes de rang et deux chaînes
+// d'enseigne.
+var queenHearts = newCard(rankQueen, suitCoeur)
+
 // Multiplier renvoie le gain net, en multiple de la mise. Zéro signifie perdu.
 func (o SideOutcome) Multiplier() float64 { return sideMultipliers[o] }
 
@@ -141,14 +149,14 @@ func (o SideOutcome) Won() bool { return o != OutcomeLose }
 
 // EvalPerfectPairs évalue le pari Perfect Pairs sur les deux premières cartes
 // du joueur.
-func EvalPerfectPairs(a, b *Card) SideOutcome {
-	if a.Rank != b.Rank {
+func EvalPerfectPairs(a, b Card) SideOutcome {
+	if !a.SameRank(b) {
 		return OutcomeLose
 	}
 	switch {
-	case a.Suit == b.Suit:
+	case a.SameSuit(b):
 		return PPPerfect
-	case a.Color() == b.Color():
+	case a.IsRed() == b.IsRed():
 		return PPColored
 	default:
 		return PPMixed
@@ -157,9 +165,9 @@ func EvalPerfectPairs(a, b *Card) SideOutcome {
 
 // EvalTwentyOnePlus3 évalue le pari 21+3 : les deux cartes du joueur et la
 // carte visible du croupier forment une main de poker à trois cartes.
-func EvalTwentyOnePlus3(a, b, up *Card) SideOutcome {
-	flush := a.Suit == b.Suit && b.Suit == up.Suit
-	trips := a.Rank == b.Rank && b.Rank == up.Rank
+func EvalTwentyOnePlus3(a, b, up Card) SideOutcome {
+	flush := a.SameSuit(b) && b.SameSuit(up)
+	trips := a.SameRank(b) && b.SameRank(up)
 	straight := isStraight(a, b, up)
 
 	switch {
@@ -179,7 +187,7 @@ func EvalTwentyOnePlus3(a, b, up *Card) SideOutcome {
 
 // isStraight teste trois cartes pour une suite. L'As est évalué deux fois,
 // comme 14 pour reconnaître Dame-Roi-As et comme 1 pour reconnaître As-2-3.
-func isStraight(cards ...*Card) bool {
+func isStraight(cards ...Card) bool {
 	high := make([]int, 0, len(cards))
 	low := make([]int, 0, len(cards))
 	for _, c := range cards {
@@ -211,22 +219,21 @@ func consecutive(v []int) bool {
 // EvalLuckyLadies évalue le pari Lucky Ladies, qui paie si les deux premières
 // cartes du joueur totalisent 20. Le gain maximal combine une paire de Dames de
 // coeur et un blackjack du croupier.
-func EvalLuckyLadies(a, b *Card, dealerBJ bool) SideOutcome {
-	h := &Hand{Cards: []*Card{a, b}}
+func EvalLuckyLadies(a, b Card, dealerBJ bool) SideOutcome {
+	h := &Hand{Cards: []Card{a, b}}
 	total, _ := h.Total()
 	if total != 20 {
 		return OutcomeLose
 	}
-	queenOfHearts := a.Rank == "Q" && a.Suit == "Coeur" &&
-		b.Rank == "Q" && b.Suit == "Coeur"
+	queenOfHearts := a == queenHearts && b == queenHearts
 	switch {
 	case queenOfHearts && dealerBJ:
 		return LLQueensHeartsBJ
 	case queenOfHearts:
 		return LLQueensHearts
-	case a.Rank == b.Rank && a.Suit == b.Suit:
+	case a == b:
 		return LLMatched20
-	case a.Suit == b.Suit:
+	case a.SameSuit(b):
 		return LLSuited20
 	default:
 		return LLAny20
