@@ -1,9 +1,6 @@
 package blackjack
 
-import (
-	"fmt"
-	"sort"
-)
+import "sort"
 
 // SideBets porte les montants misés sur chaque pari annexe. Un montant nul
 // signifie que le pari n'est pas joué, et son évaluation est alors sautée.
@@ -22,81 +19,162 @@ func (sb SideBets) Total() float64 {
 // Any indique si au moins un pari annexe est joué.
 func (sb SideBets) Any() bool { return sb.Total() > 0 }
 
-// Tables de gains, exprimées en multiplicateur du montant misé (gain net,
-// hors retour de la mise).
+// SideOutcome identifie la combinaison obtenue sur un pari annexe.
 //
-// VERSION DE RÉFÉRENCE : des maps indexées par chaîne, consultées sur le hot
-// path. Chaque consultation hache une chaîne, et plusieurs libellés sont même
-// construits par fmt.Sprintf. Les paliers d'optimisation remplaceront ces maps
-// par des tableaux plats indexés par une énumération entière.
-var perfectPairsPaytable = map[string]float64{
-	"parfaite": 25, // même rang et même enseigne
-	"coloree":  12, // même rang, même couleur chromatique, enseignes différentes
-	"mixte":    6,  // même rang, couleurs chromatiques différentes
+// PALIER 2. La version de référence identifiait chaque combinaison par une
+// chaîne, puis consultait une map[string]float64 pour en tirer le gain. Deux
+// coûts se cumulaient sur le hot path : le hachage de la chaîne, et la
+// manipulation de la chaîne elle-même, retournée à chaque évaluation même
+// lorsque personne ne la lisait.
+//
+// Le domaine est pourtant borné et connu à la compilation : dix-neuf
+// combinaisons en tout. Un entier suffit à les désigner, les gains se lisent
+// dans un tableau plat indexé par cet entier, et le libellé lisible ne se
+// calcule que lorsqu'on en a besoin — c'est-à-dire pour la narration, hors du
+// chemin mesuré.
+type SideOutcome uint8
+
+const (
+	// OutcomeLose vaut zéro, ce qui en fait la valeur par défaut d'un
+	// SideOutcome non initialisé. C'est volontaire : un oubli se traduit par un
+	// pari perdu, jamais par un gain fortuit.
+	OutcomeLose SideOutcome = iota
+
+	// Perfect Pairs
+	PPPerfect // même rang et même enseigne
+	PPColored // même rang, même couleur chromatique, enseignes différentes
+	PPMixed   // même rang, couleurs chromatiques différentes
+
+	// 21+3
+	TPSuitedTrips // trois cartes identiques de même enseigne
+	TPStraightFlush
+	TPTrips
+	TPStraight
+	TPFlush
+
+	// Lucky Ladies
+	LLQueensHeartsBJ // deux Dames de coeur et blackjack du croupier
+	LLQueensHearts
+	LLMatched20 // 20 formé de deux cartes rigoureusement identiques
+	LLSuited20  // 20 de même enseigne
+	LLAny20
+
+	// Buster Blackjack, selon le nombre de cartes de la main sautée
+	Buster3
+	Buster4
+	Buster5
+	Buster6
+	Buster7
+	Buster8Plus
+
+	outcomeCount
+)
+
+// sideMultipliers donne le gain net de chaque combinaison, en multiplicateur du
+// montant misé. Tableau plat indexé par la combinaison : pas de hachage, pas
+// d'indirection.
+var sideMultipliers = [outcomeCount]float64{
+	OutcomeLose: 0,
+
+	PPPerfect: 25,
+	PPColored: 12,
+	PPMixed:   6,
+
+	TPSuitedTrips:   100,
+	TPStraightFlush: 40,
+	TPTrips:         30,
+	TPStraight:      10,
+	TPFlush:         5,
+
+	LLQueensHeartsBJ: 1000,
+	LLQueensHearts:   200,
+	LLMatched20:      25,
+	LLSuited20:       10,
+	LLAny20:          4,
+
+	Buster3:     2,
+	Buster4:     2,
+	Buster5:     4,
+	Buster6:     18,
+	Buster7:     50,
+	Buster8Plus: 250,
 }
 
-var twentyOnePlus3Paytable = map[string]float64{
-	"brelan_couleur": 100, // trois cartes identiques de même enseigne
-	"quinte_flush":   40,
-	"brelan":         30,
-	"quinte":         10,
-	"couleur":        5,
+// sideLabels donne le libellé lisible de chaque combinaison. Consulté
+// uniquement pour la narration, donc hors du chemin mesuré.
+var sideLabels = [outcomeCount]string{
+	OutcomeLose: "perdu",
+
+	PPPerfect: "paire parfaite",
+	PPColored: "paire colorée",
+	PPMixed:   "paire mixte",
+
+	TPSuitedTrips:   "brelan de même enseigne",
+	TPStraightFlush: "quinte flush",
+	TPTrips:         "brelan",
+	TPStraight:      "quinte",
+	TPFlush:         "couleur",
+
+	LLQueensHeartsBJ: "deux Dames de coeur et blackjack du croupier",
+	LLQueensHearts:   "deux Dames de coeur",
+	LLMatched20:      "20 de deux cartes identiques",
+	LLSuited20:       "20 de même enseigne",
+	LLAny20:          "20",
+
+	Buster3:     "croupier sauté en 3 cartes",
+	Buster4:     "croupier sauté en 4 cartes",
+	Buster5:     "croupier sauté en 5 cartes",
+	Buster6:     "croupier sauté en 6 cartes",
+	Buster7:     "croupier sauté en 7 cartes",
+	Buster8Plus: "croupier sauté en 8 cartes ou plus",
 }
 
-var luckyLadiesPaytable = map[string]float64{
-	"paire_dame_coeur_bj": 1000, // deux Dames de coeur et blackjack du croupier
-	"paire_dame_coeur":    200,
-	"vingt_identique":     25, // 20 formé de deux cartes rigoureusement identiques
-	"vingt_couleur":       10, // 20 de même enseigne
-	"vingt":               4,
-}
+// Multiplier renvoie le gain net, en multiple de la mise. Zéro signifie perdu.
+func (o SideOutcome) Multiplier() float64 { return sideMultipliers[o] }
 
-// busterPaytable paie selon le nombre de cartes de la main sautée du croupier.
-var busterPaytable = map[int]float64{
-	3: 2,
-	4: 2,
-	5: 4,
-	6: 18,
-	7: 50,
-	8: 250, // 8 cartes ou plus
-}
+// Label renvoie le libellé lisible de la combinaison. À n'appeler que hors du
+// chemin mesuré.
+func (o SideOutcome) Label() string { return sideLabels[o] }
+
+// Won indique si la combinaison est gagnante.
+func (o SideOutcome) Won() bool { return o != OutcomeLose }
 
 // EvalPerfectPairs évalue le pari Perfect Pairs sur les deux premières cartes
-// du joueur. Renvoie le multiplicateur de gain et le libellé de la combinaison.
-func EvalPerfectPairs(a, b *Card) (float64, string) {
+// du joueur.
+func EvalPerfectPairs(a, b *Card) SideOutcome {
 	if a.Rank != b.Rank {
-		return 0, "perdu"
+		return OutcomeLose
 	}
 	switch {
 	case a.Suit == b.Suit:
-		return perfectPairsPaytable["parfaite"], "parfaite"
+		return PPPerfect
 	case a.Color() == b.Color():
-		return perfectPairsPaytable["coloree"], "coloree"
+		return PPColored
 	default:
-		return perfectPairsPaytable["mixte"], "mixte"
+		return PPMixed
 	}
 }
 
 // EvalTwentyOnePlus3 évalue le pari 21+3 : les deux cartes du joueur et la
 // carte visible du croupier forment une main de poker à trois cartes.
-func EvalTwentyOnePlus3(a, b, up *Card) (float64, string) {
+func EvalTwentyOnePlus3(a, b, up *Card) SideOutcome {
 	flush := a.Suit == b.Suit && b.Suit == up.Suit
 	trips := a.Rank == b.Rank && b.Rank == up.Rank
 	straight := isStraight(a, b, up)
 
 	switch {
 	case trips && flush:
-		return twentyOnePlus3Paytable["brelan_couleur"], "brelan_couleur"
+		return TPSuitedTrips
 	case straight && flush:
-		return twentyOnePlus3Paytable["quinte_flush"], "quinte_flush"
+		return TPStraightFlush
 	case trips:
-		return twentyOnePlus3Paytable["brelan"], "brelan"
+		return TPTrips
 	case straight:
-		return twentyOnePlus3Paytable["quinte"], "quinte"
+		return TPStraight
 	case flush:
-		return twentyOnePlus3Paytable["couleur"], "couleur"
+		return TPFlush
 	}
-	return 0, "perdu"
+	return OutcomeLose
 }
 
 // isStraight teste trois cartes pour une suite. L'As est évalué deux fois,
@@ -131,52 +209,57 @@ func consecutive(v []int) bool {
 }
 
 // EvalLuckyLadies évalue le pari Lucky Ladies, qui paie si les deux premières
-// cartes du joueur totalisent 20. Le gain maximal combine une paire de Dames
-// de coeur et un blackjack du croupier.
-func EvalLuckyLadies(a, b *Card, dealerBJ bool) (float64, string) {
+// cartes du joueur totalisent 20. Le gain maximal combine une paire de Dames de
+// coeur et un blackjack du croupier.
+func EvalLuckyLadies(a, b *Card, dealerBJ bool) SideOutcome {
 	h := &Hand{Cards: []*Card{a, b}}
 	total, _ := h.Total()
 	if total != 20 {
-		return 0, "perdu"
+		return OutcomeLose
 	}
 	queenOfHearts := a.Rank == "Q" && a.Suit == "Coeur" &&
 		b.Rank == "Q" && b.Suit == "Coeur"
 	switch {
 	case queenOfHearts && dealerBJ:
-		return luckyLadiesPaytable["paire_dame_coeur_bj"], "paire_dame_coeur_bj"
+		return LLQueensHeartsBJ
 	case queenOfHearts:
-		return luckyLadiesPaytable["paire_dame_coeur"], "paire_dame_coeur"
+		return LLQueensHearts
 	case a.Rank == b.Rank && a.Suit == b.Suit:
-		return luckyLadiesPaytable["vingt_identique"], "vingt_identique"
+		return LLMatched20
 	case a.Suit == b.Suit:
-		return luckyLadiesPaytable["vingt_couleur"], "vingt_couleur"
+		return LLSuited20
 	default:
-		return luckyLadiesPaytable["vingt"], "vingt"
+		return LLAny20
 	}
 }
 
-// EvalBuster évalue le pari Buster Blackjack, qui paie quand le croupier
-// saute, d'autant plus que sa main compte de cartes.
-func EvalBuster(dealerCardCount int, dealerBusted bool) (float64, string) {
+// EvalBuster évalue le pari Buster Blackjack, qui paie quand le croupier saute,
+// d'autant plus que sa main compte de cartes.
+func EvalBuster(dealerCardCount int, dealerBusted bool) SideOutcome {
 	if !dealerBusted {
-		return 0, "perdu"
+		return OutcomeLose
 	}
-	n := dealerCardCount
-	if n > 8 {
-		n = 8
+	switch {
+	case dealerCardCount <= 3:
+		return Buster3
+	case dealerCardCount == 4:
+		return Buster4
+	case dealerCardCount == 5:
+		return Buster5
+	case dealerCardCount == 6:
+		return Buster6
+	case dealerCardCount == 7:
+		return Buster7
+	default:
+		return Buster8Plus
 	}
-	m, ok := busterPaytable[n]
-	if !ok {
-		return 0, "perdu"
-	}
-	return m, fmt.Sprintf("bust_%d_cartes", n)
 }
 
-// netSide convertit un multiplicateur de gain en résultat net : si le
-// multiplicateur est nul, la mise est perdue.
-func netSide(stake, multiplier float64) float64 {
-	if multiplier <= 0 {
+// netSide convertit une combinaison en résultat net : si elle est perdante, la
+// mise est perdue.
+func netSide(stake float64, o SideOutcome) float64 {
+	if !o.Won() {
 		return -stake
 	}
-	return stake * multiplier
+	return stake * o.Multiplier()
 }

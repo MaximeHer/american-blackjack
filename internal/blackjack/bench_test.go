@@ -132,9 +132,9 @@ func BenchmarkSideBetEval(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = EvalPerfectPairs(a, c2)
-		_, _ = EvalTwentyOnePlus3(a, c2, up)
-		_, _ = EvalLuckyLadies(a, c2, false)
+		_ = EvalPerfectPairs(a, c2)
+		_ = EvalTwentyOnePlus3(a, c2, up)
+		_ = EvalLuckyLadies(a, c2, false)
 	}
 }
 

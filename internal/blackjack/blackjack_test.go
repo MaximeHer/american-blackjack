@@ -50,21 +50,24 @@ func TestIsPairAcrossTenValues(t *testing.T) {
 
 func TestPerfectPairs(t *testing.T) {
 	cases := []struct {
-		name  string
-		a, b  *Card
-		mult  float64
-		label string
+		name string
+		a, b *Card
+		want SideOutcome
+		mult float64
 	}{
-		{"parfaite", c("8", "Coeur"), c("8", "Coeur"), 25, "parfaite"},
-		{"coloree", c("8", "Coeur"), c("8", "Carreau"), 12, "coloree"},
-		{"mixte", c("8", "Coeur"), c("8", "Pique"), 6, "mixte"},
-		{"perdu", c("8", "Coeur"), c("9", "Coeur"), 0, "perdu"},
+		{"parfaite", c("8", "Coeur"), c("8", "Coeur"), PPPerfect, 25},
+		{"coloree", c("8", "Coeur"), c("8", "Carreau"), PPColored, 12},
+		{"mixte", c("8", "Coeur"), c("8", "Pique"), PPMixed, 6},
+		{"perdu", c("8", "Coeur"), c("9", "Coeur"), OutcomeLose, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, l := EvalPerfectPairs(tc.a, tc.b)
-			if m != tc.mult || l != tc.label {
-				t.Fatalf("= (%v, %q), attendu (%v, %q)", m, l, tc.mult, tc.label)
+			o := EvalPerfectPairs(tc.a, tc.b)
+			if o != tc.want {
+				t.Fatalf("= %s, attendu %s", o.Label(), tc.want.Label())
+			}
+			if o.Multiplier() != tc.mult {
+				t.Fatalf("gain = %v, attendu %v", o.Multiplier(), tc.mult)
 			}
 		})
 	}
@@ -74,56 +77,77 @@ func TestTwentyOnePlus3(t *testing.T) {
 	cases := []struct {
 		name     string
 		a, b, up *Card
-		label    string
+		want     SideOutcome
 	}{
-		{"brelan couleur", c("7", "Coeur"), c("7", "Coeur"), c("7", "Coeur"), "brelan_couleur"},
-		{"quinte flush", c("5", "Pique"), c("6", "Pique"), c("7", "Pique"), "quinte_flush"},
-		{"brelan", c("7", "Coeur"), c("7", "Pique"), c("7", "Trefle"), "brelan"},
-		{"quinte", c("5", "Coeur"), c("6", "Pique"), c("7", "Trefle"), "quinte"},
-		{"quinte haute", c("Q", "Coeur"), c("K", "Pique"), c("A", "Trefle"), "quinte"},
-		{"quinte basse", c("A", "Coeur"), c("2", "Pique"), c("3", "Trefle"), "quinte"},
-		{"couleur", c("2", "Coeur"), c("7", "Coeur"), c("K", "Coeur"), "couleur"},
-		{"perdu", c("2", "Coeur"), c("7", "Pique"), c("K", "Trefle"), "perdu"},
+		{"brelan couleur", c("7", "Coeur"), c("7", "Coeur"), c("7", "Coeur"), TPSuitedTrips},
+		{"quinte flush", c("5", "Pique"), c("6", "Pique"), c("7", "Pique"), TPStraightFlush},
+		{"brelan", c("7", "Coeur"), c("7", "Pique"), c("7", "Trefle"), TPTrips},
+		{"quinte", c("5", "Coeur"), c("6", "Pique"), c("7", "Trefle"), TPStraight},
+		{"quinte haute", c("Q", "Coeur"), c("K", "Pique"), c("A", "Trefle"), TPStraight},
+		{"quinte basse", c("A", "Coeur"), c("2", "Pique"), c("3", "Trefle"), TPStraight},
+		{"couleur", c("2", "Coeur"), c("7", "Coeur"), c("K", "Coeur"), TPFlush},
+		{"perdu", c("2", "Coeur"), c("7", "Pique"), c("K", "Trefle"), OutcomeLose},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, l := EvalTwentyOnePlus3(tc.a, tc.b, tc.up); l != tc.label {
-				t.Fatalf("= %q, attendu %q", l, tc.label)
+			if o := EvalTwentyOnePlus3(tc.a, tc.b, tc.up); o != tc.want {
+				t.Fatalf("= %s, attendu %s", o.Label(), tc.want.Label())
 			}
 		})
 	}
 }
 
 func TestLuckyLadies(t *testing.T) {
-	if _, l := EvalLuckyLadies(c("Q", "Coeur"), c("Q", "Coeur"), true); l != "paire_dame_coeur_bj" {
-		t.Fatalf("paire de Dames de coeur avec blackjack croupier = %q", l)
+	cases := []struct {
+		name     string
+		a, b     *Card
+		dealerBJ bool
+		want     SideOutcome
+	}{
+		{"dames de coeur + blackjack croupier", c("Q", "Coeur"), c("Q", "Coeur"), true, LLQueensHeartsBJ},
+		{"dames de coeur", c("Q", "Coeur"), c("Q", "Coeur"), false, LLQueensHearts},
+		{"deux rois de pique", c("K", "Pique"), c("K", "Pique"), false, LLMatched20},
+		{"20 de meme enseigne", c("K", "Pique"), c("Q", "Pique"), false, LLSuited20},
+		{"20 quelconque", c("K", "Pique"), c("Q", "Coeur"), false, LLAny20},
+		{"19 ne paie rien", c("K", "Pique"), c("9", "Coeur"), false, OutcomeLose},
 	}
-	if _, l := EvalLuckyLadies(c("Q", "Coeur"), c("Q", "Coeur"), false); l != "paire_dame_coeur" {
-		t.Fatalf("paire de Dames de coeur = %q", l)
-	}
-	if _, l := EvalLuckyLadies(c("K", "Pique"), c("K", "Pique"), false); l != "vingt_identique" {
-		t.Fatalf("deux Rois de pique = %q", l)
-	}
-	if _, l := EvalLuckyLadies(c("K", "Pique"), c("Q", "Pique"), false); l != "vingt_couleur" {
-		t.Fatalf("20 de même enseigne = %q", l)
-	}
-	if _, l := EvalLuckyLadies(c("K", "Pique"), c("Q", "Coeur"), false); l != "vingt" {
-		t.Fatalf("20 quelconque = %q", l)
-	}
-	if _, l := EvalLuckyLadies(c("K", "Pique"), c("9", "Coeur"), false); l != "perdu" {
-		t.Fatalf("19 ne doit rien payer, obtenu %q", l)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if o := EvalLuckyLadies(tc.a, tc.b, tc.dealerBJ); o != tc.want {
+				t.Fatalf("= %s, attendu %s", o.Label(), tc.want.Label())
+			}
+		})
 	}
 }
 
 func TestBuster(t *testing.T) {
-	if m, _ := EvalBuster(5, false); m != 0 {
-		t.Fatal("sans dépassement du croupier, le Buster est perdu")
+	if o := EvalBuster(5, false); o != OutcomeLose {
+		t.Fatalf("sans dépassement du croupier, le Buster est perdu, obtenu %s", o.Label())
 	}
-	if m, _ := EvalBuster(6, true); m != 18 {
-		t.Fatalf("un dépassement en 6 cartes paie 18:1, obtenu %v", m)
+	if o := EvalBuster(6, true); o != Buster6 || o.Multiplier() != 18 {
+		t.Fatalf("un dépassement en 6 cartes paie 18:1, obtenu %s à %v", o.Label(), o.Multiplier())
 	}
-	if m, _ := EvalBuster(12, true); m != 250 {
-		t.Fatalf("au-delà de 8 cartes, le palier maximal s'applique, obtenu %v", m)
+	if o := EvalBuster(12, true); o != Buster8Plus || o.Multiplier() != 250 {
+		t.Fatalf("au-delà de 8 cartes, le palier maximal s'applique, obtenu %s", o.Label())
+	}
+}
+
+// TestSideOutcomeTables verifie que chaque combinaison a un gain et un libellé,
+// et qu'aucune entrée du tableau plat n'a été oubliée.
+func TestSideOutcomeTables(t *testing.T) {
+	for o := SideOutcome(0); o < outcomeCount; o++ {
+		if sideLabels[o] == "" {
+			t.Errorf("la combinaison %d n'a pas de libellé", o)
+		}
+		if o != OutcomeLose && sideMultipliers[o] <= 0 {
+			t.Errorf("la combinaison %q a un gain nul ou négatif : %v", sideLabels[o], sideMultipliers[o])
+		}
+	}
+	if sideMultipliers[OutcomeLose] != 0 {
+		t.Error("OutcomeLose doit avoir un gain nul")
+	}
+	if OutcomeLose != 0 {
+		t.Error("OutcomeLose doit valoir zéro, afin qu'un SideOutcome non initialisé soit perdant")
 	}
 }
 

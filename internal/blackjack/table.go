@@ -129,12 +129,10 @@ func (t *Table) Deal(bet float64, side SideBets) error {
 	// Paris annexes jugés sur la seule distribution initiale. Lucky Ladies
 	// attend le contrôle de la carte cachée, dont dépend son gain maximal.
 	if side.PerfectPairs > 0 {
-		m, label := EvalPerfectPairs(p1, p2)
-		t.addSide("Perfect Pairs", label, side.PerfectPairs, m)
+		t.addSide("Perfect Pairs", side.PerfectPairs, EvalPerfectPairs(p1, p2))
 	}
 	if side.TwentyOnePlus3 > 0 {
-		m, label := EvalTwentyOnePlus3(p1, p2, up)
-		t.addSide("21+3", label, side.TwentyOnePlus3, m)
+		t.addSide("21+3", side.TwentyOnePlus3, EvalTwentyOnePlus3(p1, p2, up))
 	}
 
 	// L'assurance se propose avant tout autre choix, sur un As visible.
@@ -378,35 +376,33 @@ func (t *Table) resolveLuckyLadies(dealerBJ bool) {
 		return
 	}
 	cards := t.hands[0].h.Cards
-	m, label := EvalLuckyLadies(cards[0], cards[1], dealerBJ)
-	t.addSide("Lucky Ladies", label, t.side.LuckyLadies, m)
+	t.addSide("Lucky Ladies", t.side.LuckyLadies, EvalLuckyLadies(cards[0], cards[1], dealerBJ))
 }
 
 func (t *Table) resolveBuster() {
 	if t.side.Buster <= 0 {
 		return
 	}
-	m, label := EvalBuster(len(t.dealer.Cards), t.dealer.IsBust())
-	t.addSide("Buster Blackjack", label, t.side.Buster, m)
+	t.addSide("Buster Blackjack", t.side.Buster, EvalBuster(len(t.dealer.Cards), t.dealer.IsBust()))
 }
 
 func (t *Table) resolveBusterNoDraw() {
 	if t.side.Buster <= 0 {
 		return
 	}
-	t.addSide("Buster Blackjack", "perdu", t.side.Buster, 0)
+	t.addSide("Buster Blackjack", t.side.Buster, OutcomeLose)
 }
 
 // addSide enregistre un pari annexe et crédite son retour.
-func (t *Table) addSide(name, label string, stake, multiplier float64) {
-	net := netSide(stake, multiplier)
+func (t *Table) addSide(name string, stake float64, o SideOutcome) {
+	net := netSide(stake, o)
 	if net > 0 {
 		t.Bankroll += stake + net
 	}
 	t.roundNet += net
 	t.sideResults = append(t.sideResults, SideResult{
 		Name:  name,
-		Label: label,
+		Label: o.Label(),
 		Stake: stake,
 		Net:   net,
 	})

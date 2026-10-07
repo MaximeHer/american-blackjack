@@ -70,24 +70,24 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 
 	// --- Paris annexes jugés sur la distribution initiale ---
 	if sb.PerfectPairs > 0 {
-		m, label := EvalPerfectPairs(p1, p2)
-		res.SideNet += netSide(sb.PerfectPairs, m)
+		o := EvalPerfectPairs(p1, p2)
+		res.SideNet += netSide(sb.PerfectPairs, o)
 		if tr != nil {
-			tr.add("Perfect Pairs : %s.", label)
+			tr.add("Perfect Pairs : %s.", o.Label())
 		}
 	}
 	if sb.TwentyOnePlus3 > 0 {
-		m, label := EvalTwentyOnePlus3(p1, p2, up)
-		res.SideNet += netSide(sb.TwentyOnePlus3, m)
+		o := EvalTwentyOnePlus3(p1, p2, up)
+		res.SideNet += netSide(sb.TwentyOnePlus3, o)
 		if tr != nil {
-			tr.add("21+3 : %s.", label)
+			tr.add("21+3 : %s.", o.Label())
 		}
 	}
 	if sb.LuckyLadies > 0 {
-		m, label := EvalLuckyLadies(p1, p2, dealerBJ)
-		res.SideNet += netSide(sb.LuckyLadies, m)
+		o := EvalLuckyLadies(p1, p2, dealerBJ)
+		res.SideNet += netSide(sb.LuckyLadies, o)
 		if tr != nil {
-			tr.add("Lucky Ladies : %s.", label)
+			tr.add("Lucky Ladies : %s.", o.Label())
 		}
 	}
 
@@ -118,7 +118,7 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 		res.Hands = 1
 		if sb.Buster > 0 {
 			// Le croupier ne tire pas, donc il ne saute pas.
-			res.SideNet += netSide(sb.Buster, 0)
+			res.SideNet += netSide(sb.Buster, OutcomeLose)
 		}
 		return res
 	}
@@ -133,8 +133,7 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 		if sb.Buster > 0 {
 			// Le croupier complète sa main pour que le Buster soit jugeable.
 			playDealer(dealer, s, r, tr)
-			m, _ := EvalBuster(len(dealer.Cards), dealer.IsBust())
-			res.SideNet += netSide(sb.Buster, m)
+			res.SideNet += netSide(sb.Buster, EvalBuster(len(dealer.Cards), dealer.IsBust()))
 			res.DealerPlayed = true
 			res.DealerBust = dealer.IsBust()
 		}
@@ -245,10 +244,10 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 
 	// --- Pari Buster ---
 	if sb.Buster > 0 {
-		m, label := EvalBuster(len(dealer.Cards), dealerBust)
-		res.SideNet += netSide(sb.Buster, m)
+		o := EvalBuster(len(dealer.Cards), dealerBust)
+		res.SideNet += netSide(sb.Buster, o)
 		if tr != nil {
-			tr.add("Buster Blackjack : %s.", label)
+			tr.add("Buster Blackjack : %s.", o.Label())
 		}
 	}
 
