@@ -18,6 +18,27 @@ import (
 //	go test -run '^$' -bench . -benchmem -count 10 ./internal/blackjack > bench/apres.txt
 //	benchstat bench/avant.txt bench/apres.txt
 
+// Puits de benchmark.
+//
+// MODULE 4, piège de l'élimination de code mort (DCE) : si le résultat d'un
+// calcul n'est jamais lu hors de la boucle, le compilateur supprime purement et
+// simplement ce calcul du binaire. Le benchmark mesure alors une boucle vide.
+//
+// Le risque est d'autant plus réel que la fonction mesurée est petite et
+// inlinable — ce qui est devenu le cas de Hand.Total et Card.Value après le
+// rang 2. Chaque benchmark accumule donc son résultat dans une variable locale,
+// affectée à l'une de ces variables de paquet après la boucle : le compilateur
+// ne peut plus prouver que le calcul est inutile.
+var (
+	sinkInt     int
+	sinkBool    bool
+	sinkFloat   float64
+	sinkCard    Card
+	sinkString  string
+	sinkOutcome SideOutcome
+	sinkStats   Stats
+)
+
 // benchShoe fournit un sabot entretenu : il est rebattu dès que la coupe est
 // atteinte, afin que le benchmark mesure un régime permanent et non un sabot
 // qui s'épuise.
@@ -32,14 +53,16 @@ func BenchmarkPlayRound(b *testing.B) {
 	s := benchShoe(r, 42)
 	var sb SideBets
 
+	var net float64
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if s.CutReached() {
 			s.Shuffle()
 		}
-		_ = PlayRound(s, r, 1, sb, nil)
+		net += PlayRound(s, r, 1, sb, nil).MainNet
 	}
+	sinkFloat = net
 }
 
 // BenchmarkPlayRoundSideBets mesure le surcoût des quatre paris annexes, qui
@@ -49,14 +72,16 @@ func BenchmarkPlayRoundSideBets(b *testing.B) {
 	s := benchShoe(r, 42)
 	sb := SideBets{PerfectPairs: 1, TwentyOnePlus3: 1, LuckyLadies: 1, Buster: 1}
 
+	var net float64
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if s.CutReached() {
 			s.Shuffle()
 		}
-		_ = PlayRound(s, r, 1, sb, nil)
+		net += PlayRound(s, r, 1, sb, nil).MainNet
 	}
+	sinkFloat = net
 }
 
 // BenchmarkShuffle isole le rebattage du sabot. La version de référence
@@ -71,6 +96,8 @@ func BenchmarkShuffle(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s.Shuffle()
 	}
+	// Shuffle n'a pas de valeur de retour : on lit l'état qu'elle a produit.
+	sinkInt = s.Remaining()
 }
 
 // BenchmarkDeal isole la distribution d'une carte.
@@ -78,14 +105,16 @@ func BenchmarkDeal(b *testing.B) {
 	r := DefaultRules()
 	s := benchShoe(r, 42)
 
+	var c Card
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if s.Remaining() == 0 {
 			s.Shuffle()
 		}
-		_ = s.Deal()
+		c = s.Deal()
 	}
+	sinkCard = c
 }
 
 // BenchmarkHandTotal isole le calcul du total d'une main. La fonction est
@@ -98,11 +127,16 @@ func BenchmarkHandTotal(b *testing.B) {
 		newCard(rank5, suitCarreau),
 	}}
 
+	var total int
+	var soft bool
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = h.Total()
+		t, s := h.Total()
+		total += t
+		soft = s
 	}
+	sinkInt, sinkBool = total, soft
 }
 
 // BenchmarkDecide isole la consultation de la stratégie de base : construction
@@ -119,11 +153,13 @@ func BenchmarkDecide(b *testing.B) {
 	}}
 	up := newCard(rank9, suitTrefle)
 
+	var d string
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = Decide(h, up, r, 1)
+		d = Decide(h, up, r, 1)
 	}
+	sinkString = d
 }
 
 // BenchmarkSideBetEval isole l'évaluation des paris annexes, dont le 21+3 qui
@@ -133,13 +169,15 @@ func BenchmarkSideBetEval(b *testing.B) {
 	c2 := newCard(rank6, suitPique)
 	up := newCard(rank7, suitPique)
 
+	var o SideOutcome
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = EvalPerfectPairs(a, c2)
-		_ = EvalTwentyOnePlus3(a, c2, up)
-		_ = EvalLuckyLadies(a, c2, false)
+		o += EvalPerfectPairs(a, c2)
+		o += EvalTwentyOnePlus3(a, c2, up)
+		o += EvalLuckyLadies(a, c2, false)
 	}
+	sinkOutcome = o
 }
 
 // BenchmarkSimulate mesure la boucle complète sur un nombre fixe de coups.
@@ -147,11 +185,13 @@ func BenchmarkSideBetEval(b *testing.B) {
 // sur le binaire.
 func BenchmarkSimulate(b *testing.B) {
 	r := DefaultRules()
+	var st Stats
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = Simulate(10_000, 42, r, 1, SideBets{})
+		st = Simulate(10_000, 42, r, 1, SideBets{})
 	}
+	sinkStats = st
 }
 
 // TestStructSizes documente le coût mémoire des structures du moteur.
