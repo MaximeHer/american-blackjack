@@ -131,7 +131,8 @@ func Simulate(n int, seed int64, r Rules, bet float64, sb SideBets) Stats {
 		if shoe.CutReached() {
 			shoe.Shuffle()
 		}
-		st.Add(PlayRound(shoe, r, bet, sb))
+		// nil : la boucle de reference ne produit aucun recit.
+		st.Add(PlayRound(shoe, r, bet, sb, nil))
 	}
 	st.Shuffles = shoe.Shuffles
 	st.CardsDealt = shoe.CardsDealt

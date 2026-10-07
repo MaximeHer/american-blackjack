@@ -52,7 +52,7 @@ func (rn *Runner) RunBatch(n int) {
 		if rn.shoe.CutReached() {
 			rn.shoe.Shuffle()
 		}
-		rn.stats.Add(PlayRound(rn.shoe, rn.rules, rn.bet, rn.side))
+		rn.stats.Add(PlayRound(rn.shoe, rn.rules, rn.bet, rn.side, nil))
 	}
 	rn.stats.Shuffles = rn.shoe.Shuffles
 	rn.stats.CardsDealt = rn.shoe.CardsDealt

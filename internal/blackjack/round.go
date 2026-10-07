@@ -1,7 +1,5 @@
 package blackjack
 
-import "fmt"
-
 // RoundResult agrège le résultat d'un coup.
 //
 // MainWagered ne retient que la mise initiale : c'est le dénominateur de
@@ -29,20 +27,6 @@ type RoundResult struct {
 	SideWagered  float64
 	Hands        int
 	SideNet      float64
-
-	// Log est le récit du coup, carte par carte et décision par décision.
-	//
-	// VERSION DE RÉFÉRENCE : il est construit systématiquement, y compris en
-	// simulation où personne ne le lit. Chaque ligne coûte un fmt.Sprintf —
-	// formatage et allocation — et un coup en produit une dizaine. C'est la
-	// forme la plus coûteuse de travail inutile : non seulement elle alloue,
-	// mais elle alimente le ramasse-miettes avec des objets immédiatement
-	// morts.
-	//
-	// Le journal est une vraie fonctionnalité, consommée par l'interface web.
-	// Le défaut n'est pas de le produire, c'est de le produire sans que
-	// l'appelant l'ait demandé.
-	Log []string
 }
 
 // PlayRound joue un coup complet de blackjack américain :
@@ -57,7 +41,7 @@ type RoundResult struct {
 //  6. le joueur joue ses mains, splits et doubles compris ;
 //  7. le croupier complète sa main ;
 //  8. les règlements sont effectués, puis le pari Buster est résolu.
-func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
+func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResult {
 	res := RoundResult{
 		MainWagered: bet,
 		Action:      bet,
@@ -73,9 +57,11 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 	dealer := &Hand{Cards: []*Card{up, hole}}
 	hands := []*Hand{{Cards: []*Card{p1, p2}, Bet: bet}}
 
-	res.Log = append(res.Log, fmt.Sprintf("Mise de %.2f sur la case principale.", bet))
-	res.Log = append(res.Log, fmt.Sprintf("Joueur : %s et %s.", p1.Label(), p2.Label()))
-	res.Log = append(res.Log, fmt.Sprintf("Croupier : %s visible, une carte cachée.", up.Label()))
+	if tr != nil {
+		tr.add("Mise de %.2f sur la case principale.", bet)
+		tr.add("Joueur : %s et %s.", p1.Label(), p2.Label())
+		tr.add("Croupier : %s visible, une carte cachée.", up.Label())
+	}
 
 	dealerBJ := dealer.IsBlackjack()
 	playerBJ := hands[0].IsBlackjack()
@@ -86,17 +72,23 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 	if sb.PerfectPairs > 0 {
 		m, label := EvalPerfectPairs(p1, p2)
 		res.SideNet += netSide(sb.PerfectPairs, m)
-		res.Log = append(res.Log, fmt.Sprintf("Perfect Pairs : %s.", label))
+		if tr != nil {
+			tr.add("Perfect Pairs : %s.", label)
+		}
 	}
 	if sb.TwentyOnePlus3 > 0 {
 		m, label := EvalTwentyOnePlus3(p1, p2, up)
 		res.SideNet += netSide(sb.TwentyOnePlus3, m)
-		res.Log = append(res.Log, fmt.Sprintf("21+3 : %s.", label))
+		if tr != nil {
+			tr.add("21+3 : %s.", label)
+		}
 	}
 	if sb.LuckyLadies > 0 {
 		m, label := EvalLuckyLadies(p1, p2, dealerBJ)
 		res.SideNet += netSide(sb.LuckyLadies, m)
-		res.Log = append(res.Log, fmt.Sprintf("Lucky Ladies : %s.", label))
+		if tr != nil {
+			tr.add("Lucky Ladies : %s.", label)
+		}
 	}
 
 	// --- Assurance ---
@@ -109,12 +101,16 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 		} else {
 			res.MainNet -= ins
 		}
-		res.Log = append(res.Log, fmt.Sprintf("Assurance prise pour %.2f.", ins))
+		if tr != nil {
+			tr.add("Assurance prise pour %.2f.", ins)
+		}
 	}
 
 	// --- Contrôle de la carte cachée ---
 	if dealerBJ {
-		res.Log = append(res.Log, fmt.Sprintf("Le croupier retourne %s : blackjack.", hole.Label()))
+		if tr != nil {
+			tr.add("Le croupier retourne %s : blackjack.", hole.Label())
+		}
 		if !playerBJ {
 			res.MainNet -= bet
 		}
@@ -131,10 +127,12 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 	if playerBJ {
 		res.MainNet += bet * r.BlackjackPayout
 		res.Hands = 1
-		res.Log = append(res.Log, fmt.Sprintf("Blackjack du joueur, payé %.2f pour 1.", r.BlackjackPayout))
+		if tr != nil {
+			tr.add("Blackjack du joueur, payé %.2f pour 1.", r.BlackjackPayout)
+		}
 		if sb.Buster > 0 {
 			// Le croupier complète sa main pour que le Buster soit jugeable.
-			playDealer(dealer, s, r, &res)
+			playDealer(dealer, s, r, tr)
 			m, _ := EvalBuster(len(dealer.Cards), dealer.IsBust())
 			res.SideNet += netSide(sb.Buster, m)
 			res.DealerPlayed = true
@@ -159,8 +157,9 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 			}
 
 			action := DefaultStrategy.Decide(h, up, r, len(hands))
-			res.Log = append(res.Log, fmt.Sprintf("Main %d (%s) : %s.",
-				i+1, h.Describe(), actionLabel(action)))
+			if tr != nil {
+				tr.add("Main %d (%s) : %s.", i+1, h.Describe(), actionLabel(action))
+			}
 
 			switch action {
 			case Stand:
@@ -213,8 +212,10 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 		}
 	}
 	if live || sb.Buster > 0 {
-		res.Log = append(res.Log, fmt.Sprintf("Le croupier retourne %s.", hole.Label()))
-		playDealer(dealer, s, r, &res)
+		if tr != nil {
+			tr.add("Le croupier retourne %s.", hole.Label())
+		}
+		playDealer(dealer, s, r, tr)
 		res.DealerPlayed = true
 	}
 
@@ -246,25 +247,29 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets) RoundResult {
 	if sb.Buster > 0 {
 		m, label := EvalBuster(len(dealer.Cards), dealerBust)
 		res.SideNet += netSide(sb.Buster, m)
-		res.Log = append(res.Log, fmt.Sprintf("Buster Blackjack : %s.", label))
+		if tr != nil {
+			tr.add("Buster Blackjack : %s.", label)
+		}
 	}
 
-	res.Log = append(res.Log, fmt.Sprintf("Résultat net du coup : %+.2f.", res.MainNet+res.SideNet))
+	if tr != nil {
+		tr.add("Résultat net du coup : %+.2f.", res.MainNet+res.SideNet)
+	}
 	return res
 }
 
 // playDealer complète la main du croupier : il tire jusqu'à 17, et sur un 17
 // souple selon la règle de la table (H17 ou S17).
 //
-// res peut être nil quand le journal n'est pas souhaité.
-func playDealer(d *Hand, s *Shoe, r Rules, res *RoundResult) {
+// tr peut être nil quand la narration n'est pas souhaitée.
+func playDealer(d *Hand, s *Shoe, r Rules, tr *Trace) {
 	for {
 		t, soft := d.Total()
 		if t < 17 || (t == 17 && soft && r.DealerHitsSoft17) {
 			c := s.Deal()
 			d.Add(c)
-			if res != nil {
-				res.Log = append(res.Log, fmt.Sprintf("Le croupier tire %s.", c.Label()))
+			if tr != nil {
+				tr.add("Le croupier tire %s.", c.Label())
 			}
 			continue
 		}

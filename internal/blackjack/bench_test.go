@@ -38,7 +38,7 @@ func BenchmarkPlayRound(b *testing.B) {
 		if s.CutReached() {
 			s.Shuffle()
 		}
-		_ = PlayRound(s, r, 1, sb)
+		_ = PlayRound(s, r, 1, sb, nil)
 	}
 }
 
@@ -55,7 +55,7 @@ func BenchmarkPlayRoundSideBets(b *testing.B) {
 		if s.CutReached() {
 			s.Shuffle()
 		}
-		_ = PlayRound(s, r, 1, sb)
+		_ = PlayRound(s, r, 1, sb, nil)
 	}
 }
 
@@ -179,7 +179,7 @@ func TestStructSizes(t *testing.T) {
 			unsafe.Sizeof(rr.PlayerBJ) + unsafe.Sizeof(rr.MainWagered) + unsafe.Sizeof(rr.DealerBJ) +
 				unsafe.Sizeof(rr.Action) + unsafe.Sizeof(rr.DealerPlayed) + unsafe.Sizeof(rr.MainNet) +
 				unsafe.Sizeof(rr.DealerBust) + unsafe.Sizeof(rr.SideWagered) + unsafe.Sizeof(rr.Hands) +
-				unsafe.Sizeof(rr.SideNet) + unsafe.Sizeof(rr.Log)},
+				unsafe.Sizeof(rr.SideNet)},
 		{"Shoe", unsafe.Sizeof(sh), 0},
 	}
 

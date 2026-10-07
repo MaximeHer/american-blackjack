@@ -429,10 +429,10 @@ func handleSampleRound(w http.ResponseWriter, r *http.Request) {
 		side = blackjack.SideBets{PerfectPairs: 5, TwentyOnePlus3: 5, LuckyLadies: 5, Buster: 5}
 	}
 
-	res := blackjack.SampleRound(seed, blackjack.DefaultRules(), 10, side)
+	res, log := blackjack.SampleRound(seed, blackjack.DefaultRules(), 10, side)
 	writeJSON(w, map[string]any{
 		"seed":    seed,
-		"log":     res.Log,
+		"log":     log,
 		"mainNet": res.MainNet,
 		"sideNet": res.SideNet,
 		"hands":   res.Hands,

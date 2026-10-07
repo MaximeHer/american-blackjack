@@ -41,7 +41,7 @@ func SimulateCurve(n, points int, seed int64, r Rules, bet float64, sb SideBets)
 		if shoe.CutReached() {
 			shoe.Shuffle()
 		}
-		st.Add(PlayRound(shoe, r, bet, sb))
+		st.Add(PlayRound(shoe, r, bet, sb, nil))
 
 		if next < len(marks) && i == marks[next] {
 			out = append(out, CurvePoint{
@@ -170,8 +170,10 @@ func CompareRules(n int, seed int64) []RuleComparison {
 //
 // Le défaut de la version de référence n'est pas de produire ce journal, c'est
 // de le produire aussi dans la boucle de simulation, qui ne le lit jamais.
-func SampleRound(seed int64, r Rules, bet float64, sb SideBets) RoundResult {
+func SampleRound(seed int64, r Rules, bet float64, sb SideBets) (RoundResult, []string) {
 	rng := rand.New(rand.NewSource(seed))
 	shoe := NewShoe(r.NumDecks, r.Penetration, rng)
-	return PlayRound(shoe, r, bet, sb)
+	tr := NewTrace()
+	res := PlayRound(shoe, r, bet, sb, tr)
+	return res, tr.Lines
 }
