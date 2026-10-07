@@ -1,7 +1,5 @@
 package blackjack
 
-import "fmt"
-
 // Décisions possibles du joueur.
 const (
 	Hit       = "H"
@@ -103,32 +101,120 @@ var pairRows = map[string]string{
 	"2":  "PPPPPPHHHH",
 }
 
-// strategyTable est construite au démarrage, avec des clés textuelles de la
-// forme "hard-16-10", "soft-18-3" ou "pair-8-A".
-//
-// VERSION DE RÉFÉRENCE. C'est l'un des hot paths les plus coûteux du moteur :
-// chaque décision construit sa clé par fmt.Sprintf — donc un formatage et une
-// allocation — puis hache la chaîne obtenue pour interroger une map. Le palier
-// d'optimisation correspondant remplacera tout cela par une indexation
-// arithmétique dans un tableau plat, sans allocation ni hachage.
-var strategyTable = map[string]string{}
+// Codes de décision internes. dNone vaut zéro, donc une case non renseignée de
+// la table plate est naturellement « pas de règle », sans initialisation
+// explicite.
+const (
+	dNone uint8 = iota
+	dHit
+	dStand
+	dDouble
+	dSplit
+	dSurrender
+)
 
+// decisionNames traduit un code en décision publique. Les chaînes sont des
+// constantes statiques : les retourner ne coûte aucune allocation.
+var decisionNames = [...]string{
+	dNone:      "",
+	dHit:       Hit,
+	dStand:     Stand,
+	dDouble:    Double,
+	dSplit:     Split,
+	dSurrender: Surrender,
+}
+
+// Dimensions de la table plate.
+const (
+	kindHard  = 0
+	kindSoft  = 1
+	kindPair  = 2
+	kindCount = 3
+	maxTotal  = 22 // totaux de 0 à 21 ; les paires sont indexées par leur valeur, 2 à 11
+	upCount   = 10
+)
+
+// strategyFlat est la stratégie de base sous forme de TABLEAU PLAT, indexé
+// arithmétiquement.
+//
+// RANG 4 DU PROFIL. La version précédente construisait une clé textuelle par
+// fmt.Sprintf — "hard-16-10" — puis hachait cette chaîne pour interroger une
+// map. Le profil attribuait 2,64 s à cette seule ligne, soit 35 % du temps
+// total du programme et 87 % du coût de decideBasic.
+//
+// L'état de décision est pourtant entièrement décrit par trois entiers bornés :
+// le type de main (3 valeurs), le total (5 à 21) et la carte visible du
+// croupier (10 valeurs). Un tableau de 3 x 22 x 10 cases d'un octet pèse
+// 660 octets — soit une dizaine de lignes de cache — et son accès se réduit à
+// deux multiplications et une addition, sans formatage, sans allocation et sans
+// hachage.
+//
+// C'est l'application directe du compromis espace-temps du cours : remplacer un
+// calcul par une lecture indexée directe.
+var strategyFlat [kindCount][maxTotal][upCount]uint8
+
+// upIdxByRank convertit le rang d'une carte visible en colonne de la table :
+// les quatre rangs de valeur 10 partagent la colonne 8, l'As occupe la 9.
+var upIdxByRank = [rankCount]uint8{
+	rank2: 0, rank3: 1, rank4: 2, rank5: 3, rank6: 4,
+	rank7: 5, rank8: 6, rank9: 7,
+	rank10: 8, rankJack: 8, rankQueen: 8, rankKing: 8,
+	rankAce: 9,
+}
+
+// decisionCode traduit le caractère d'une ligne source en code interne.
+func decisionCode(ch byte) uint8 {
+	switch ch {
+	case 'H':
+		return dHit
+	case 'S':
+		return dStand
+	case 'D':
+		return dDouble
+	case 'P':
+		return dSplit
+	case 'R':
+		return dSurrender
+	}
+	return dNone
+}
+
+// init remplit la table plate à partir des MÊMES lignes sources que celles
+// exposées par ExportStrategy.
+//
+// C'est une précaution délibérée : recopier la table à la main serait la façon
+// la plus sûre d'introduire une erreur silencieuse de stratégie, qui dégraderait
+// l'avantage de la maison sans provoquer la moindre erreur visible.
+// TestStrategyFlatMatchesRows vérifie cette correspondance case par case.
 func init() {
 	for total, row := range hardRows {
-		for i, col := range dealerColumns {
-			strategyTable[fmt.Sprintf("hard-%d-%s", total, col)] = string(row[i])
+		for i := 0; i < upCount; i++ {
+			strategyFlat[kindHard][total][i] = decisionCode(row[i])
 		}
 	}
 	for total, row := range softRows {
-		for i, col := range dealerColumns {
-			strategyTable[fmt.Sprintf("soft-%d-%s", total, col)] = string(row[i])
+		for i := 0; i < upCount; i++ {
+			strategyFlat[kindSoft][total][i] = decisionCode(row[i])
 		}
 	}
 	for rank, row := range pairRows {
-		for i, col := range dealerColumns {
-			strategyTable[fmt.Sprintf("pair-%s-%s", rank, col)] = string(row[i])
+		v := pairValue(rank)
+		for i := 0; i < upCount; i++ {
+			strategyFlat[kindPair][v][i] = decisionCode(row[i])
 		}
 	}
+}
+
+// pairValue convertit le rang normalisé d'une paire en sa valeur au blackjack,
+// qui sert d'index : 11 pour les As, 10 pour les bûches, le rang lui-même sinon.
+func pairValue(rank string) int {
+	switch rank {
+	case "A":
+		return 11
+	case "10":
+		return 10
+	}
+	return int(rank[0] - '0')
 }
 
 // Decide applique la stratégie de base à une main, puis dégrade la décision si
@@ -139,16 +225,14 @@ func init() {
 // savoir si un split supplémentaire est encore autorisé.
 func decideBasic(h *Hand, up Card, r Rules, handCount int) string {
 	countDecide()
-	upKey := up.NormalizedRank()
+	ui := int(upIdxByRank[up.rank()])
 	total, soft := h.Total()
 
 	// Une paire se consulte d'abord dans sa propre table, et seulement si on
 	// peut encore ouvrir une main supplémentaire.
 	if h.IsPair() && handCount < r.MaxSplitHands {
-		rank := h.Cards[0].NormalizedRank()
-		countMapLookup()
-		if d, ok := strategyTable[fmt.Sprintf("pair-%s-%s", rank, upKey)]; ok {
-			if d == Split {
+		if d := strategyFlat[kindPair][h.Cards[0].Value()][ui]; d != dNone {
+			if d == dSplit {
 				if canSplit(h, r) {
 					return Split
 				}
@@ -158,13 +242,16 @@ func decideBasic(h *Hand, up Card, r Rules, handCount int) string {
 		}
 	}
 
-	kind := "hard"
+	kind := kindHard
 	if soft {
-		kind = "soft"
+		kind = kindSoft
 	}
-	countMapLookup()
-	d, ok := strategyTable[fmt.Sprintf("%s-%d-%s", kind, total, upKey)]
-	if !ok {
+
+	var d uint8
+	if total < maxTotal {
+		d = strategyFlat[kind][total][ui]
+	}
+	if d == dNone {
 		// Totaux souples inférieurs à 13 (une paire d'As non séparable) :
 		// aucun risque de dépasser, on tire.
 		if total >= 17 {
@@ -205,9 +292,9 @@ func canSplit(h *Hand, r Rules) bool {
 // degrade remplace une décision impossible par la meilleure décision
 // autorisée. Un double interdit devient un tirage, sauf sur une main souple
 // de 18 ou plus où il faut rester. Un abandon interdit devient un tirage.
-func degrade(d string, h *Hand, r Rules, total int, soft bool) string {
+func degrade(d uint8, h *Hand, r Rules, total int, soft bool) string {
 	switch d {
-	case Double:
+	case dDouble:
 		if canDouble(h, r) {
 			return Double
 		}
@@ -215,13 +302,13 @@ func degrade(d string, h *Hand, r Rules, total int, soft bool) string {
 			return Stand
 		}
 		return Hit
-	case Surrender:
+	case dSurrender:
 		if r.LateSurrender && len(h.Cards) == 2 && !h.FromSplit {
 			return Surrender
 		}
 		return Hit
 	}
-	return d
+	return decisionNames[d]
 }
 
 // canDouble vérifie qu'un double est autorisé sur cette main.

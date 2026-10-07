@@ -290,3 +290,70 @@ func TestDealerBustRateInconditionnel(t *testing.T) {
 		t.Errorf("taux de dépassement inconditionnel suspect : %.3f %%, attendu ~28,3 %%", rate)
 	}
 }
+
+// TestStrategyFlatMatchesRows verifie que la table plate correspond exactement
+// aux lignes sources, case par case.
+//
+// C'est le garde-fou du rang 4. Recopier une table de strategie a la main est la
+// facon la plus sure d'introduire une erreur silencieuse : le moteur
+// continuerait de tourner, l'avantage de la maison deriverait de quelques
+// centiemes, et rien ne le signalerait. La table plate est donc GENEREE depuis
+// les memes lignes, et ce test le prouve.
+func TestStrategyFlatMatchesRows(t *testing.T) {
+	// Les colonnes de la table correspondent aux cartes visibles du croupier,
+	// dans l'ordre 2, 3, ... 10, A.
+	upCards := []Card{
+		newCard(rank2, suitPique), newCard(rank3, suitPique),
+		newCard(rank4, suitPique), newCard(rank5, suitPique),
+		newCard(rank6, suitPique), newCard(rank7, suitPique),
+		newCard(rank8, suitPique), newCard(rank9, suitPique),
+		newCard(rank10, suitPique), newCard(rankAce, suitPique),
+	}
+	for i, c := range upCards {
+		if got := int(upIdxByRank[c.rank()]); got != i {
+			t.Fatalf("la carte %s tombe en colonne %d au lieu de %d", c.Label(), got, i)
+		}
+	}
+	// Les quatre rangs de valeur 10 doivent partager la colonne 8.
+	for _, r := range []uint8{rank10, rankJack, rankQueen, rankKing} {
+		if upIdxByRank[r] != 8 {
+			t.Errorf("le rang %s devrait occuper la colonne 8", rankNames[r])
+		}
+	}
+
+	checked := 0
+	for total, row := range hardRows {
+		for i := 0; i < upCount; i++ {
+			if got, want := strategyFlat[kindHard][total][i], decisionCode(row[i]); got != want {
+				t.Errorf("dur %d contre %s : table plate %q, ligne source %q",
+					total, upCards[i].RankName(), decisionNames[got], decisionNames[want])
+			}
+			checked++
+		}
+	}
+	for total, row := range softRows {
+		for i := 0; i < upCount; i++ {
+			if got, want := strategyFlat[kindSoft][total][i], decisionCode(row[i]); got != want {
+				t.Errorf("souple %d contre %s : table plate %q, ligne source %q",
+					total, upCards[i].RankName(), decisionNames[got], decisionNames[want])
+			}
+			checked++
+		}
+	}
+	for rank, row := range pairRows {
+		v := pairValue(rank)
+		for i := 0; i < upCount; i++ {
+			if got, want := strategyFlat[kindPair][v][i], decisionCode(row[i]); got != want {
+				t.Errorf("paire de %s contre %s : table plate %q, ligne source %q",
+					rank, upCards[i].RankName(), decisionNames[got], decisionNames[want])
+			}
+			checked++
+		}
+	}
+
+	// 17 totaux durs + 9 souples + 10 paires, par 10 cartes visibles.
+	if want := (len(hardRows) + len(softRows) + len(pairRows)) * upCount; checked != want {
+		t.Fatalf("%d cases verifiees, %d attendues", checked, want)
+	}
+	t.Logf("%d cases de la table plate verifiees contre les lignes sources", checked)
+}
