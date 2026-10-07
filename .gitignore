@@ -19,9 +19,10 @@ trace.out
 # baseline.txt est l'exception : c'est la mesure de référence du projet,
 # elle doit être versionnée pour que les comparaisons benchstat soient
 # reproductibles par un tiers.
-/bench/*.txt
+# Les mesures de reference sont versionnees : sans elles, aucune comparaison
+# benchstat n'est reproductible par un tiers.
+!/bench/*.txt
 /bench/*.json
-!/bench/baseline.txt
 
 # Couverture
 coverage.out
