@@ -362,90 +362,305 @@ function gridTable(title, dealer, rows, orderFn, labelFn) {
   return block;
 }
 
-/* ---------------------- Statistiques ---------------------- */
+/* ---------------------- Graphe temps réel ---------------------- */
 
-async function runSim() {
-  const btn = $('#btn-sim');
-  btn.disabled = true;
-  btn.textContent = 'Simulation en cours…';
-  try {
-    const q = new URLSearchParams({
-      rounds: $('#sim-rounds').value,
-      decks: $('#sim-decks').value,
-      h17: $('#sim-h17').checked,
-      sidebets: $('#sim-side').checked,
-    });
-    const d = await api('/api/simulate?' + q);
-    const n = (v) => Math.round(v).toLocaleString('fr-FR');
-
-    $('#sim-out').innerHTML = [
-      group('Débit'),
-      metric('Coups par seconde', n(d.roundsPerSec), 'coups/s', true),
-      metric('Temps par coup', n(d.nsPerRound), 'ns (horloge)'),
-      metric('Temps CPU par coup', n(d.cpuNsPerRound), 'ns (CPU)'),
-      metric('Parallélisme effectif', d.parallelism.toFixed(2), 'coeur sur ' + d.numCPU),
-      metric('Mains par seconde', n(d.handsPerSec), 'mains/s'),
-      metric('Cartes par seconde', n(d.cardsPerSec), 'cartes/s'),
-      metric('Durée', d.seconds.toFixed(2), 's'),
-      metric('Coups simulés', d.rounds.toLocaleString('fr-FR'), ''),
-
-      group('Mémoire et ramasse-miettes'),
-      metric('Alloué par coup', n(d.bytesPerRound), 'octets', true),
-      metric('Allocations par coup', d.allocsPerRound.toFixed(1), 'objets', true),
-      metric('Débit d'allocation', n(d.allocRateMBs), 'Mo/s'),
-      metric('Cycles de GC', d.gcCycles.toLocaleString('fr-FR'), ''),
-      metric('Pause GC cumulée', d.gcPauseTotalMs.toFixed(2), 'ms'),
-      metric('Pause GC p99', n(d.gcPauseP99Us), 'µs'),
-      metric('Part horloge du GC', d.gcWallShare.toFixed(2), '%'),
-      metric('Part CPU du GC', d.gcCpuShare.toFixed(2), '%'),
-
-      group('Correction et dispersion'),
-      metric('Avantage de la maison', d.houseEdge.toFixed(4), '%', true),
-      metric('Erreur-type', '± ' + d.stdError.toFixed(4), 'point'),
-      metric('Element of risk', d.elementOfRisk.toFixed(4), '%'),
-      metric('Écart-type par coup', d.stdDev.toFixed(4), 'unité de mise'),
-      metric('Blackjacks joueur', d.playerBJ.toFixed(3), '%'),
-      metric('Croupier a joué', d.dealerPlayed.toFixed(2), '% des coups'),
-      metric('Croupier sauté', d.dealerBust.toFixed(3), '% des mains jouées'),
-      d.sideWagered > 0 ? metric('Avantage paris annexes', d.sideEdge.toFixed(3), '%') : '',
-
-      opsSection(d),
-    ].join('');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Lancer la simulation';
+// LiveChart trace une série temporelle qui se remplit au fil des lots.
+// Échelle verticale auto-ajustée, bande de confiance optionnelle.
+class LiveChart {
+  constructor(id, opts) {
+    this.cv = document.getElementById(id);
+    this.g = this.cv.getContext('2d');
+    this.o = Object.assign({
+      color: '#d8b25f',
+      fmt: (v) => v.toFixed(0),
+      zero: true,   // inclure 0 dans l'échelle verticale
+      band: false,  // tracer une bande lo/hi
+      ref: null,    // valeur de référence en pointillés
+      refLabel: '',
+    }, opts || {});
+    this.pts = [];
   }
+
+  reset() {
+    this.pts = [];
+    this.draw();
+  }
+
+  push(x, y, lo, hi) {
+    if (!isFinite(y)) return;
+    this.pts.push({ x, y, lo, hi });
+    this.draw();
+  }
+
+  draw() {
+    const g = this.g, W = this.cv.width, H = this.cv.height;
+    const m = { l: 54, r: 10, t: 8, b: 20 };
+    g.clearRect(0, 0, W, H);
+
+    if (!this.pts.length) {
+      g.fillStyle = '#5d6b66';
+      g.font = '12px Segoe UI, sans-serif';
+      g.textAlign = 'center';
+      g.fillText('en attente', W / 2, H / 2);
+      return;
+    }
+
+    const xs = this.pts.map((p) => p.x);
+    const lows = this.pts.map((p) => (this.o.band && p.lo != null ? p.lo : p.y));
+    const highs = this.pts.map((p) => (this.o.band && p.hi != null ? p.hi : p.y));
+    if (this.o.ref != null) { lows.push(this.o.ref); highs.push(this.o.ref); }
+
+    let y0 = Math.min.apply(null, lows);
+    let y1 = Math.max.apply(null, highs);
+    if (this.o.zero) { y0 = Math.min(0, y0); y1 = Math.max(0, y1); }
+    if (y1 - y0 < 1e-9) y1 = y0 + 1;
+    const pad = (y1 - y0) * 0.12;
+    y0 -= pad; y1 += pad;
+
+    const x0 = Math.min.apply(null, xs);
+    const x1 = Math.max(Math.max.apply(null, xs), x0 + 1);
+    const X = (v) => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+    const Y = (v) => m.t + (y1 - v) / (y1 - y0) * (H - m.t - m.b);
+
+    // Grille et graduations verticales
+    g.font = '10px Segoe UI, sans-serif';
+    g.textAlign = 'right';
+    for (let i = 0; i <= 3; i++) {
+      const v = y0 + (y1 - y0) * i / 3;
+      g.strokeStyle = 'rgba(255,255,255,.06)';
+      g.beginPath();
+      g.moveTo(m.l, Y(v));
+      g.lineTo(W - m.r, Y(v));
+      g.stroke();
+      g.fillStyle = '#5d6b66';
+      g.fillText(this.o.fmt(v), m.l - 6, Y(v) + 3);
+    }
+
+    // Bande de confiance
+    if (this.o.band) {
+      g.fillStyle = 'rgba(216,178,95,.18)';
+      g.beginPath();
+      this.pts.forEach((p, i) => {
+        const v = p.hi != null ? p.hi : p.y;
+        if (i) g.lineTo(X(p.x), Y(v)); else g.moveTo(X(p.x), Y(v));
+      });
+      for (let i = this.pts.length - 1; i >= 0; i--) {
+        const p = this.pts[i];
+        g.lineTo(X(p.x), Y(p.lo != null ? p.lo : p.y));
+      }
+      g.closePath();
+      g.fill();
+    }
+
+    // Valeur de référence
+    if (this.o.ref != null) {
+      g.strokeStyle = '#4fd48a';
+      g.setLineDash([4, 3]);
+      g.beginPath();
+      g.moveTo(m.l, Y(this.o.ref));
+      g.lineTo(W - m.r, Y(this.o.ref));
+      g.stroke();
+      g.setLineDash([]);
+      if (this.o.refLabel) {
+        g.fillStyle = '#4fd48a';
+        g.textAlign = 'left';
+        g.fillText(this.o.refLabel, m.l + 5, Y(this.o.ref) - 4);
+      }
+    }
+
+    // Aire sous la courbe
+    const grad = g.createLinearGradient(0, m.t, 0, H - m.b);
+    grad.addColorStop(0, 'rgba(216,178,95,.22)');
+    grad.addColorStop(1, 'rgba(216,178,95,0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    const base = Y(Math.max(y0, Math.min(0, y1)));
+    g.moveTo(X(this.pts[0].x), base);
+    this.pts.forEach((p) => g.lineTo(X(p.x), Y(p.y)));
+    g.lineTo(X(this.pts[this.pts.length - 1].x), base);
+    g.closePath();
+    g.fill();
+
+    // Courbe
+    g.strokeStyle = this.o.color;
+    g.lineWidth = 2;
+    g.beginPath();
+    this.pts.forEach((p, i) => {
+      if (i) g.lineTo(X(p.x), Y(p.y)); else g.moveTo(X(p.x), Y(p.y));
+    });
+    g.stroke();
+    g.lineWidth = 1;
+
+    // Dernier point
+    const last = this.pts[this.pts.length - 1];
+    g.fillStyle = this.o.color;
+    g.beginPath();
+    g.arc(X(last.x), Y(last.y), 3, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+
+/* ---------------------- Flux de simulation ---------------------- */
+
+let charts = null;
+let stream = null;
+
+function initCharts() {
+  if (charts) return;
+  charts = {
+    rate: new LiveChart('c-rate', { fmt: (v) => Math.round(v / 1000) + 'k' }),
+    alloc: new LiveChart('c-alloc', { fmt: (v) => Math.round(v) }),
+    gc: new LiveChart('c-gc', { fmt: (v) => v.toFixed(0) + '%' }),
+    edge: new LiveChart('c-edge', {
+      fmt: (v) => v.toFixed(2),
+      zero: false,
+      band: true,
+      ref: 0.35,
+      refLabel: 'publie 0,35 %',
+    }),
+  };
+}
+
+function resetDash() {
+  initCharts();
+  Object.keys(charts).forEach((k) => charts[k].reset());
+  ['v-rate', 'v-alloc', 'v-gc', 'v-edge'].forEach((id) => {
+    $('#' + id).textContent = '—';
+  });
+  $('#prog').style.width = '0';
+  $('#sim-out').innerHTML = '';
+}
+
+function startStream() {
+  stopStream();
+  resetDash();
+
+  const q = new URLSearchParams({
+    rounds: $('#sim-rounds').value,
+    decks: $('#sim-decks').value,
+    h17: $('#sim-h17').checked,
+    sidebets: $('#sim-side').checked,
+    batches: 80,
+  });
+
+  $('#btn-sim').disabled = true;
+  $('#btn-stop').disabled = false;
+  $('#prog-label').textContent = 'demarrage...';
+
+  stream = new EventSource('/api/simulate/stream?' + q);
+
+  stream.onmessage = (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch (err) { return; }
+    onBatch(d);
+    if (d.kind === 'done') { onDone(d); stopStream(); }
+  };
+
+  stream.onerror = () => {
+    if (!stream) return;
+    $('#prog-label').textContent = 'flux interrompu';
+    stopStream();
+  };
+}
+
+function stopStream() {
+  if (stream) { stream.close(); stream = null; }
+  $('#btn-sim').disabled = false;
+  $('#btn-stop').disabled = true;
+}
+
+function onBatch(d) {
+  const n = (v) => Math.round(v).toLocaleString('fr-FR');
+
+  charts.rate.push(d.done, d.roundsPerSec);
+  charts.alloc.push(d.done, d.allocMBPerSec);
+  charts.gc.push(d.done, d.gcCpuShare);
+  charts.edge.push(d.done, d.houseEdge,
+    d.houseEdge - 1.96 * d.stdError,
+    d.houseEdge + 1.96 * d.stdError);
+
+  $('#v-rate').textContent = n(d.roundsPerSec) + ' coups/s';
+  $('#v-alloc').textContent = n(d.allocMBPerSec) + ' Mo/s';
+  $('#v-gc').textContent = d.gcCpuShare.toFixed(1) + ' %';
+  $('#v-edge').textContent =
+    d.houseEdge.toFixed(3) + ' % ± ' + (1.96 * d.stdError).toFixed(3);
+
+  const frac = d.total ? d.done / d.total : 0;
+  $('#prog').style.width = (frac * 100).toFixed(1) + '%';
+
+  let label = n(d.done) + ' / ' + n(d.total) + ' coups · ' +
+    d.elapsedSeconds.toFixed(1) + ' s écoulées';
+  if (d.kind !== 'done' && d.roundsPerSec > 0) {
+    label += ' · ~' + ((d.total - d.done) / d.roundsPerSec).toFixed(0) + ' s restantes';
+  }
+  $('#prog-label').textContent = label;
+}
+
+function onDone(d) {
+  const n = (v) => Math.round(v).toLocaleString('fr-FR');
+  $('#prog-label').textContent =
+    'terminé · ' + n(d.done) + ' coups en ' + d.elapsedSeconds.toFixed(2) + ' s';
+
+  $('#sim-out').innerHTML = [
+    group("Bilan de l'exécution"),
+    metric('Débit global', n(d.overallRoundsPerSec), 'coups/s', true),
+    metric('Temps par coup', n(d.nsPerRound), 'ns'),
+    metric('Parallélisme', d.parallelism.toFixed(2), 'coeur'),
+    metric('Durée', d.elapsedSeconds.toFixed(2), 's'),
+
+    group('Mémoire et ramasse-miettes'),
+    metric('Alloué par coup', n(d.bytesPerRound), 'octets', true),
+    metric('Allocations par coup', d.allocsPerRound.toFixed(1), 'objets', true),
+    metric("Taux d'allocation", n(d.allocMBPerSec), 'Mo/s'),
+    metric('Cycles de GC', d.gcCyclesTotal.toLocaleString('fr-FR'), ''),
+    metric('Part CPU du GC', d.gcCpuShare.toFixed(2), '%'),
+
+    group('Correction et dispersion'),
+    metric('Avantage de la maison', d.houseEdge.toFixed(4), '%', true),
+    metric('Erreur-type', '± ' + d.stdError.toFixed(4), 'point'),
+    metric('Écart-type par coup', d.stdDev.toFixed(4), 'unité de mise'),
+    metric('Mains jouées', d.hands.toLocaleString('fr-FR'), ''),
+    metric('Cartes distribuées', d.cardsDealt.toLocaleString('fr-FR'), ''),
+    metric('Rebattages', d.shuffles.toLocaleString('fr-FR'), ''),
+    $('#sim-side').checked
+      ? metric('Avantage paris annexes', d.sideEdge.toFixed(3), '%')
+      : '',
+
+    opsSection(d),
+  ].join('');
 }
 
 function metric(k, v, u, hl) {
-  return `<div class="metric${hl ? ' hl' : ''}"><div class="k">${k}</div>` +
-    `<div class="v">${v} <span class="u">${u}</span></div></div>`;
+  return '<div class="metric' + (hl ? ' hl' : '') + '"><div class="k">' + k + '</div>' +
+    '<div class="v">' + v + ' <span class="u">' + u + '</span></div></div>';
 }
 
 function group(title) {
-  return `<div class="metric-group">${title}</div>`;
+  return '<div class="metric-group">' + title + '</div>';
 }
 
-// opsSection n'affiche les compteurs d'opérations que si le binaire a été
-// compilé avec -tags instrument. Dans le binaire par défaut ils n'existent pas,
+// opsSection n'affiche les compteurs d'operations que si le binaire a ete
+// compile avec -tags instrument. Dans le binaire par defaut ils n'existent pas,
 // et c'est volontaire : un compteur dans la boucle falsifierait la mesure.
 function opsSection(d) {
-  if (!d.instrumented || !d.ops || !d.ops.enabled) {
-    return group('Opérations élémentaires') +
-      `<div class="metric note">Binaire non instrumenté — aucun compteur n'est ` +
-      `compilé dedans, afin que la boucle mesurée reste exactement celle de ` +
-      `production.<br><code>go run -tags instrument ./cmd/server</code></div>`;
-  }
-  const r = d.rounds || 1;
   const o = d.ops;
+  if (!o || !o.enabled) {
+    return group('Opérations élémentaires') +
+      '<div class="metric note">Binaire non instrumenté — aucun compteur ' +
+      "n'est compilé dedans, afin que la boucle mesurée reste exactement " +
+      'celle de production.<br><code>go run -tags instrument ./cmd/server</code></div>';
+  }
+  const r = d.done || 1;
   const per = (v) => (v / r).toFixed(2);
   return [
     group('Opérations élémentaires (binaire instrumenté)'),
     metric('Décisions', per(o.decisions), 'par coup'),
-    metric('Appels à Total()', per(o.handTotals), 'par coup'),
+    metric('Appels à Total()', per(o.handTotals), 'par coup', true),
     metric('Évaluations de carte', per(o.cardValues), 'par coup'),
     metric('Consultations de map', per(o.mapLookups), 'par coup', true),
-    metric('Déplacements de mélange', Math.round(o.shuffleMoves / (d.shuffles || 1)).toLocaleString('fr-FR'), 'par rebattage', true),
+    metric('Déplacements de mélange',
+      Math.round(o.shuffleMoves / (d.shuffles || 1)).toLocaleString('fr-FR'),
+      'par rebattage', true),
   ].join('');
 }
 
@@ -657,7 +872,11 @@ function wire() {
   });
 
   $('#hint-toggle').onchange = renderControls;
-  $('#btn-sim').onclick = () => guard(runSim);
+  $('#btn-sim').onclick = () => startStream();
+  $('#btn-stop').onclick = () => {
+    stopStream();
+    $('#prog-label').textContent = 'arrêté par l’utilisateur';
+  };
   $('#btn-curve').onclick = () => guard(drawCurve);
   $('#btn-rules').onclick = () => guard(drawRules);
   $('#btn-sample').onclick = () => guard(drawSample);

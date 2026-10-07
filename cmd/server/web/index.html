@@ -155,10 +155,10 @@
     <div class="sim-controls">
       <label>Coups
         <select id="sim-rounds">
-          <option value="100000">100 000</option>
-          <option value="500000" selected>500 000</option>
-          <option value="2000000">2 000 000</option>
-          <option value="10000000">10 000 000 (lent)</option>
+          <option value="200000">200 000</option>
+          <option value="1000000">1 000 000</option>
+          <option value="2000000" selected>2 000 000</option>
+          <option value="10000000">10 000 000</option>
         </select>
       </label>
       <label>Jeux
@@ -171,7 +171,51 @@
       </label>
       <label class="check"><input type="checkbox" id="sim-h17"> Croupier tire sur 17 souple</label>
       <label class="check"><input type="checkbox" id="sim-side"> Paris annexes</label>
-      <button class="primary" id="btn-sim">Lancer la simulation</button>
+      <button class="primary" id="btn-sim">Lancer</button>
+      <button class="ghost" id="btn-stop" disabled>Arrêter</button>
+    </div>
+
+    <div class="warn">
+      <strong>Ceci n'est pas une mesure de référence.</strong> Le déroulement par
+      lots nécessaire à l'affichage en direct relève les compteurs du runtime
+      entre chaque lot, ce qui perturbe légèrement le régime permanent. Le
+      chiffre qui fait foi est celui d'une exécution d'un seul bloc&nbsp;:
+      <code>go run ./cmd/simulate -rounds 500000</code>. Ce tableau de bord sert
+      à <em>observer</em> l'établissement du régime, pas à chiffrer un gain.
+    </div>
+
+    <div class="progress"><div class="progress-fill" id="prog"></div></div>
+    <div class="progress-label" id="prog-label">en attente</div>
+
+    <div class="dash">
+      <div class="dash-card">
+        <div class="dash-head">
+          <span class="dash-title">Débit</span>
+          <span class="dash-val" id="v-rate">—</span>
+        </div>
+        <canvas id="c-rate" width="520" height="140"></canvas>
+      </div>
+      <div class="dash-card">
+        <div class="dash-head">
+          <span class="dash-title">Taux d'allocation</span>
+          <span class="dash-val" id="v-alloc">—</span>
+        </div>
+        <canvas id="c-alloc" width="520" height="140"></canvas>
+      </div>
+      <div class="dash-card">
+        <div class="dash-head">
+          <span class="dash-title">Part CPU du ramasse-miettes</span>
+          <span class="dash-val" id="v-gc">—</span>
+        </div>
+        <canvas id="c-gc" width="520" height="140"></canvas>
+      </div>
+      <div class="dash-card">
+        <div class="dash-head">
+          <span class="dash-title">Avantage de la maison</span>
+          <span class="dash-val" id="v-edge">—</span>
+        </div>
+        <canvas id="c-edge" width="520" height="140"></canvas>
+      </div>
     </div>
 
     <div id="sim-out" class="metrics"></div>

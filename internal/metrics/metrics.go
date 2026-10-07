@@ -369,3 +369,18 @@ func mid(h *metrics.Float64Histogram, i int) float64 {
 func newTestHist(buckets []float64, counts []uint64) *metrics.Float64Histogram {
 	return &metrics.Float64Histogram{Buckets: buckets, Counts: counts}
 }
+
+// GCCyclesSoFar renvoie le nombre de cycles de ramasse-miettes écoulés depuis
+// le début de la mesure, sans la clore.
+//
+// Utile pour un affichage de progression : la mesure globale reste ouverte et
+// son relevé final n'est pas perturbé.
+func (r *Run) GCCyclesSoFar() uint64 {
+	s := []metrics.Sample{{Name: mGCCycles}}
+	metrics.Read(s)
+	now := s[0].Value.Uint64()
+	if now < r.before.gcCycles {
+		return 0
+	}
+	return now - r.before.gcCycles
+}

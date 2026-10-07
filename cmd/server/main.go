@@ -70,6 +70,7 @@ func main() {
 	mux.HandleFunc("/api/curve", handleCurve)
 	mux.HandleFunc("/api/rules-comparison", handleRulesComparison)
 	mux.HandleFunc("/api/sample-round", handleSampleRound)
+	mux.HandleFunc("/api/simulate/stream", handleSimulateStream)
 
 	// Le port est réservé AVANT d'annoncer l'URL : sinon, en cas de conflit,
 	// le serveur affiche une adresse joignable alors qu'il n'a rien pris, et
@@ -237,6 +238,185 @@ func handleCurve(w http.ResponseWriter, r *http.Request) {
 	seed := int64(intParam(r, "seed", 42, 0, 1<<30))
 
 	writeJSON(w, blackjack.SimulateCurve(rounds, points, seed, blackjack.DefaultRules(), 1, blackjack.SideBets{}))
+}
+
+// streamEvent est un relevé émis après chaque lot.
+type streamEvent struct {
+	Kind       string  `json:"kind"` // "progress" ou "done"
+	Done       int     `json:"done"`
+	Total      int     `json:"total"`
+	ElapsedSec float64 `json:"elapsedSeconds"`
+
+	// Mesures du lot écoulé : ce sont elles qui bougent en direct.
+	RoundsPerSec   float64 `json:"roundsPerSec"`
+	NsPerRound     float64 `json:"nsPerRound"`
+	AllocMBs       float64 `json:"allocMBPerSec"`
+	BytesPerRound  float64 `json:"bytesPerRound"`
+	AllocsPerRound float64 `json:"allocsPerRound"`
+	GCCpuShare     float64 `json:"gcCpuShare"`
+	Parallelism    float64 `json:"parallelism"`
+
+	// Cumuls depuis le début de l'exécution.
+	GCCyclesTotal uint64  `json:"gcCyclesTotal"`
+	HouseEdge     float64 `json:"houseEdge"`
+	StdError      float64 `json:"stdError"`
+	StdDev        float64 `json:"stdDev"`
+	Hands         int     `json:"hands"`
+	CardsDealt    int     `json:"cardsDealt"`
+	Shuffles      int     `json:"shuffles"`
+	SideEdge      float64 `json:"sideEdge"`
+
+	// Renseigné uniquement sur l'événement final.
+	OverallRoundsPerSec float64             `json:"overallRoundsPerSec,omitempty"`
+	Ops                 *blackjack.OpCounts `json:"ops,omitempty"`
+}
+
+// handleSimulateStream déroule une simulation par lots et émet un relevé de
+// métriques après chacun, en Server-Sent Events.
+//
+// AVERTISSEMENT DE MÉTHODE : cette exécution n'est pas une mesure de référence.
+// Elle passe par blackjack.Runner, qui duplique la boucle de Simulate pour
+// pouvoir être interrompue, et relève les compteurs du runtime entre chaque
+// lot. Le chiffre qui fait foi reste celui d'une exécution d'un seul bloc en
+// ligne de commande. L'intérêt ici est d'observer l'établissement du régime,
+// pas de chiffrer un gain.
+func handleSimulateStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		httpError(w, http.StatusInternalServerError, "le flux n'est pas supporté par ce serveur")
+		return
+	}
+
+	rounds := intParam(r, "rounds", 2_000_000, 10_000, 50_000_000)
+	batches := intParam(r, "batches", 80, 10, 400)
+	seed := int64(intParam(r, "seed", 42, 0, 1<<29))
+
+	rules := blackjack.DefaultRules()
+	rules.NumDecks = intParam(r, "decks", 4, 1, 8)
+	rules.DealerHitsSoft17 = r.URL.Query().Get("h17") == "true"
+
+	var side blackjack.SideBets
+	if r.URL.Query().Get("sidebets") == "true" {
+		side = blackjack.SideBets{PerfectPairs: 1, TwentyOnePlus3: 1, LuckyLadies: 1, Buster: 1}
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Connection", "keep-alive")
+	// Désactive une éventuelle mise en tampon par un intermédiaire.
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	blackjack.ResetOps()
+	runner := blackjack.NewRunner(seed, rules, 1, side)
+
+	batchSize := rounds / batches
+	if batchSize < 1 {
+		batchSize = 1
+	}
+
+	overall := metrics.Begin()
+	start := time.Now()
+	done := 0
+
+	for done < rounds {
+		// Un client qui ferme l'onglet ne doit pas laisser le serveur simuler
+		// dans le vide.
+		select {
+		case <-r.Context().Done():
+			return
+		default:
+		}
+
+		n := batchSize
+		if done+n > rounds {
+			n = rounds - done
+		}
+
+		bm := metrics.Begin()
+		runner.RunBatch(n)
+		m := bm.End(int64(n))
+		done += n
+
+		st := runner.Stats()
+		if !sendEvent(w, flusher, streamEvent{
+			Kind:       "progress",
+			Done:       done,
+			Total:      rounds,
+			ElapsedSec: time.Since(start).Seconds(),
+
+			RoundsPerSec:   m.OpsPerS,
+			NsPerRound:     m.NsPerOp,
+			AllocMBs:       m.AllocRateMBs,
+			BytesPerRound:  m.BytesPerOp,
+			AllocsPerRound: m.AllocsPerOp,
+			GCCpuShare:     m.GCCPUShare,
+			Parallelism:    m.Parallel,
+
+			GCCyclesTotal: cumulativeGC(overall),
+			HouseEdge:     st.HouseEdge() * 100,
+			StdError:      st.StdError() * 100,
+			StdDev:        st.StdDev(),
+			Hands:         st.Hands,
+			CardsDealt:    st.CardsDealt,
+			Shuffles:      st.Shuffles,
+			SideEdge:      st.SideEdge() * 100,
+		}) {
+			return
+		}
+	}
+
+	final := overall.End(int64(done))
+	st := runner.Stats()
+	ops := blackjack.Ops()
+	sendEvent(w, flusher, streamEvent{
+		Kind:       "done",
+		Done:       done,
+		Total:      rounds,
+		ElapsedSec: final.WallSec,
+
+		RoundsPerSec:   final.OpsPerS,
+		NsPerRound:     final.NsPerOp,
+		AllocMBs:       final.AllocRateMBs,
+		BytesPerRound:  final.BytesPerOp,
+		AllocsPerRound: final.AllocsPerOp,
+		GCCpuShare:     final.GCCPUShare,
+		Parallelism:    final.Parallel,
+
+		GCCyclesTotal: final.GCCycles,
+		HouseEdge:     st.HouseEdge() * 100,
+		StdError:      st.StdError() * 100,
+		StdDev:        st.StdDev(),
+		Hands:         st.Hands,
+		CardsDealt:    st.CardsDealt,
+		Shuffles:      st.Shuffles,
+		SideEdge:      st.SideEdge() * 100,
+
+		OverallRoundsPerSec: final.OpsPerS,
+		Ops:                 &ops,
+	})
+}
+
+// sendEvent écrit un événement SSE et le pousse immédiatement. Renvoie false si
+// le client s'est déconnecté.
+func sendEvent(w http.ResponseWriter, f http.Flusher, ev streamEvent) bool {
+	payload, err := json.Marshal(ev)
+	if err != nil {
+		log.Printf("encodage de l'événement : %v", err)
+		return false
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+		return false
+	}
+	f.Flush()
+	return true
+}
+
+// cumulativeGC relève le nombre de cycles de GC depuis le début de l'exécution
+// sans clore la mesure globale.
+func cumulativeGC(run *metrics.Run) uint64 {
+	return run.GCCyclesSoFar()
 }
 
 // handleSampleRound joue un coup isole et renvoie son recit. C'est le

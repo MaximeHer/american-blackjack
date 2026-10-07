@@ -181,9 +181,21 @@ Trois onglets :
 - **Stratégie** — la table de stratégie de base en grille colorée, **lue depuis
   le code** et non recopiée, donc garantie identique à ce que la simulation
   applique.
-- **Statistiques** — lancement de simulations, courbe de convergence de
-  l'avantage de la maison en échelle logarithmique avec sa bande de confiance à
-  95 %, et comparaison chiffrée des variantes de règles avec barres d'erreur.
+- **Statistiques** — un **tableau de bord temps réel**. La simulation est
+  déroulée par lots et diffusée en Server-Sent Events&nbsp;: quatre courbes se
+  tracent en direct — débit, taux d'allocation, part CPU du ramasse-miettes, et
+  avantage de la maison avec sa bande de confiance à 95 % — accompagnées d'une
+  barre de progression et d'une estimation du temps restant. S'y ajoutent la
+  courbe de convergence en échelle logarithmique, la comparaison chiffrée des
+  variantes de règles avec barres d'erreur, et le récit narré d'un coup.
+
+> **Le tableau de bord n'est pas un instrument de mesure.** Le déroulement par
+> lots nécessaire à l'affichage en direct relève les compteurs du runtime entre
+> chaque lot, ce qui perturbe le régime permanent — on mesure environ
+> 255 000 coups/s en streaming contre 342 306 en un seul bloc. L'interface
+> affiche cet avertissement en permanence. Le chiffre qui fait foi est celui de
+> `cmd/simulate`, et le travail de métrologie passe par le harnais, jamais par
+> une requête HTTP.
 
 ### Deux garde-fous d'architecture
 
@@ -201,7 +213,55 @@ prouve en mesurant l'avantage de la maison par les deux chemins.
 
 ---
 
-## 6. Oracle de non-régression
+## 6. Métriques
+
+Le moteur rapporte son propre comportement, sans jamais être instrumenté dans
+la boucle mesurée.
+
+```bash
+go run ./cmd/simulate -rounds 500000
+```
+
+Produit le débit (coups, mains et cartes par seconde), le temps par coup en
+horloge **et** en CPU, le parallélisme effectif, les octets et allocations par
+coup, le taux d'allocation, les cycles et pauses du ramasse-miettes avec sa part
+de CPU, et la latence de l'ordonnanceur.
+
+```bash
+go run ./cmd/simulate -rounds 500000 -json      # pour un script de mesure
+go run ./cmd/simulate -rounds 500000 -quiet     # débit seul, pour hyperfine
+```
+
+### Comptage des opérations
+
+```bash
+go run -tags instrument ./cmd/simulate -rounds 200000
+```
+
+Ajoute le nombre d'opérations élémentaires : décisions, appels à `Total()`,
+évaluations de carte, consultations de map, déplacements de mélange.
+
+**Ces compteurs sont absents du binaire par défaut.** `Instrumented` est une
+constante fausse, donc chaque bloc de comptage est éliminé à la compilation.
+Preuve par le code machine :
+
+```bash
+go tool objdump -s 'blackjack\.\(\*Hand\)\.Total' def.exe | wc -l   # 0
+go tool objdump -s 'blackjack\.\(\*Hand\)\.Total' ins.exe | wc -l   # 77
+```
+
+Dans le binaire par défaut, `Hand.Total` **n'existe pas comme fonction** : elle
+est entièrement inlinée. Dans le binaire instrumenté elle redevient une fonction
+autonome, car l'appel atomique empêche l'inlining. Le coût de l'instrumentation
+n'est donc pas une incrémentation, c'est **la perte de l'inlining** — raison
+pour laquelle elle doit être compilée dehors et non simplement tolérée.
+
+Protocole complet et banc d'essai :
+[docs/02-protocole-de-mesure.md](docs/02-protocole-de-mesure.md).
+
+---
+
+## 7. Oracle de non-régression
 
 C'est la pièce maîtresse du dispositif. L'avantage de la maison au blackjack
 est une grandeur **publiée** : le moteur doit la reproduire, ce qui permet de
@@ -245,7 +305,7 @@ cartes et décale l'avantage du jeu principal. L'oracle doit donc se mesurer
 
 ---
 
-## 7. Mesure de référence
+## 8. Mesure de référence
 
 Relevée sur la machine de développement, Go 1.26.4, windows/amd64, 12 coeurs
 logiques dont **un seul utilisé**.
@@ -299,7 +359,7 @@ Le facteur sur la représentation est donc de **32**, et une ligne de cache de
 Ces chiffres n'ont de valeur qu'accompagnés de la spécification complète du
 banc d'essai et d'un protocole statistique — voir [docs/](docs/).
 
-## 8. Choix volontairement naïfs de la baseline
+## 9. Choix volontairement naïfs de la baseline
 
 Chacun est documenté dans le code à l'endroit où il est fait, avec son coût
 physique. Ce sont les cibles du travail d'optimisation.
@@ -335,7 +395,7 @@ jamais. C'est la forme la plus courante de gaspillage en production : un code
 partagé entre deux usages paie le coût du plus exigeant des deux. L'optimisation
 consistera à le rendre explicite, pas à le supprimer.
 
-## 9. Structure
+## 10. Structure
 
 ```
 .
@@ -354,17 +414,22 @@ consistera à le rendre explicite, pas à le supprimer.
 │   ├── table.go           # table jouable coup par coup (hors chemin mesuré)
 │   ├── view.go            # sérialisation de l'état vers l'interface
 │   ├── analysis.go        # données des figures du rapport
+│   ├── runner.go          # déroulement par lots (hors chemin mesuré)
+│   ├── counters_off.go    # compteurs absents du build par défaut
+│   ├── counters_on.go     # compteurs du build -tags instrument
 │   ├── blackjack_test.go  # oracle et tests de correction
 │   └── table_test.go      # validation croisée Table / PlayRound
+├── internal/metrics/       # métriques runtime, lues autour de la boucle
 ├── docs/
-│   ├── 00-grille-et-plan.md          # suivi de la couverture des critères
-│   └── 01-perspectives-optimisation.md  # les 18 paliers, hypothèse par hypothèse
+│   ├── 00-grille-et-plan.md             # suivi de la couverture des critères
+│   ├── 01-perspectives-optimisation.md  # les 18 paliers, hypothèse par hypothèse
+│   └── 02-protocole-de-mesure.md        # banc d'essai et protocole statistique
 └── constitution.md        # gouvernance technique des assistants IA
 ```
 
 ---
 
-## 10. Feuille de route d'optimisation
+## 11. Feuille de route d'optimisation
 
 Chaque palier fait l'objet d'une branche, d'une mesure isolée par `benchstat`
 et d'une entrée au journal d'optimisation.

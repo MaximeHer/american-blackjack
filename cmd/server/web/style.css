@@ -383,6 +383,63 @@ table.strat td { font-weight: 700; }
 }
 canvas { display: block; max-width: 100%; height: auto; }
 
+/* ============ Tableau de bord temps reel ============ */
+.warn {
+  margin: 14px 0;
+  padding: 12px 15px;
+  border-radius: 10px;
+  border-left: 3px solid #d8792f;
+  background: rgba(216,121,47,.08);
+  font-size: 13px;
+  color: #d9cfc3;
+  line-height: 1.6;
+}
+.warn strong { color: #f0b074; }
+.warn code {
+  padding: 2px 7px; border-radius: 4px;
+  background: rgba(0,0,0,.35); color: var(--gold);
+}
+
+.progress {
+  height: 7px; margin: 16px 0 6px;
+  background: var(--panel-2); border-radius: 999px; overflow: hidden;
+}
+.progress-fill {
+  height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+  transition: width .18s linear;
+}
+.progress-label {
+  font-size: 12px; color: var(--dim);
+  font-variant-numeric: tabular-nums; margin-bottom: 16px;
+}
+
+.dash {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.dash-card {
+  padding: 13px 15px 8px;
+  background: var(--panel);
+  border: 1px solid #242c2f;
+  border-radius: 12px;
+}
+.dash-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.dash-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1.3px;
+  color: var(--dim);
+}
+.dash-val {
+  font-size: 19px; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.dash-card canvas { width: 100%; height: auto; }
+
 /* ============ Narration ============ */
 .narration {
   margin: 12px 0;
