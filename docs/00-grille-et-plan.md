@@ -134,8 +134,21 @@ Trois candidats, qui correspondent exactement aux trois exemples de l'énoncé :
 3. **Cache trop gourmand** — mémoïser les décisions dans une map non bornée
    fait croître le tas et augmente la pression du ramasse-miettes.
 
-Candidat retenu en priorité : le **n°2**, mesuré et expliqué mécaniquement,
-avec les autres mentionnés. Les quatre échecs sont décrits avec leur mécanisme
+**FAIT** — voir [04-echec-constructif.md](04-echec-constructif.md). L'échec
+retenu et mesuré est en réalité un quatrième, découvert en cours de route et
+plus instructif que les trois prévus : **la mémoïsation de `Hand.Total`**.
+
+  - régression mesurée : `PlayRound` **+261,9 %**, débit **−72,6 %**
+  - deux mécanismes distincts : le cache coûte 7,5 fois le calcul qu'il évite,
+    et il fait croître les objets vivants de ×17,5, portant la part CPU du
+    ramasse-miettes de 4,29 % à 11,31 %
+  - enseignement : c'est **notre propre optimisation précédente** qui a rendu
+    celle-ci perdante. Sur la version de référence, où `Total` coûtait 31,27 ns,
+    le même cache aurait été un gain.
+  - branche `echec/memoisation-total` conservée et non fusionnée
+
+Candidat initialement prévu : le n°2, à mesurer lors de la phase de
+concurrence. Les quatre échecs sont décrits avec leur mécanisme
 et la commande de profilage qui les révèle dans
 [01-perspectives-optimisation.md](01-perspectives-optimisation.md).
 
