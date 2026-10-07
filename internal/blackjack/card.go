@@ -48,7 +48,10 @@ var straightRanks = map[string]int{
 
 // Value renvoie la valeur de la carte au blackjack, l'As comptant 11.
 // La réduction de l'As à 1 est décidée au niveau de la main (voir Hand.Total).
-func (c *Card) Value() int { return cardValues[c.Rank] }
+func (c *Card) Value() int {
+	countCardValue()
+	return cardValues[c.Rank]
+}
 
 // IsAce indique si la carte est un As.
 func (c *Card) IsAce() bool { return c.Rank == "A" }

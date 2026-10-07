@@ -362,6 +362,19 @@ table.strat td { font-weight: 700; }
 .metric .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 3px; }
 .metric .u { font-size: 12px; color: var(--dim); font-weight: 400; }
 .metric.hl { border-color: var(--gold-dim); background: linear-gradient(180deg, rgba(216,178,95,.09), transparent); }
+.metric.note { grid-column: 1 / -1; font-size: 12px; color: var(--dim); line-height: 1.6; }
+.metric.note code {
+  display: inline-block; margin-top: 6px; padding: 3px 8px;
+  background: var(--panel-2); border-radius: 5px; color: var(--gold);
+}
+.metric-group {
+  grid-column: 1 / -1;
+  margin: 14px 0 -2px;
+  font-size: 11px; font-weight: 700; letter-spacing: 1.6px;
+  text-transform: uppercase; color: var(--gold-dim);
+  border-bottom: 1px solid #242c2f; padding-bottom: 6px;
+}
+.metric-group:first-child { margin-top: 0; }
 
 .chart-wrap {
   margin: 14px 0; padding: 14px;

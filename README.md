@@ -27,10 +27,10 @@ résoudre l'avantage de la maison à 0,01 point près, il faut de l'ordre de
 
 | Coups simulés | Erreur-type sur l'avantage | Durée à la vitesse baseline |
 |---|---|---|
-| 10⁶ | ± 0,114 point | ~6 s |
-| 10⁷ | ± 0,036 point | ~55 s |
-| 10⁸ | ± 0,011 point | ~9 min |
-| 10⁹ | ± 0,004 point | ~1 h 32 |
+| 10⁶ | ± 0,114 point | ~3 s |
+| 10⁷ | ± 0,036 point | ~29 s |
+| 10⁸ | ± 0,011 point | ~5 min |
+| 10⁹ | ± 0,004 point | ~49 min |
 
 Le débit du moteur n'est donc pas une coquetterie : il conditionne la
 **précision statistique atteignable**. C'est la justification physique de tout
@@ -250,12 +250,25 @@ cartes et décale l'avantage du jeu principal. L'oracle doit donc se mesurer
 Relevée sur la machine de développement, Go 1.26.4, windows/amd64, 12 coeurs
 logiques dont **un seul utilisé**.
 
-De bout en bout, sur le binaire :
+De bout en bout, sur le binaire, **15 exécutions de 500 000 coups**, machine
+sur secteur et au repos :
 
 | Métrique | Valeur |
 |---|---|
-| Débit | **181 112 coups/s** |
-| Temps par coup | **5 521 ns** |
+| Débit médian | **342 306 coups/s** |
+| Temps par coup | **2 921 ns** |
+| Écart-type | 15 363 coups/s — **4,52 %** |
+| Étendue min–max | 297 537 – 355 637 coups/s (17 % de la médiane) |
+
+> **Avertissement de protocole, appris à nos dépens.** Une première mesure
+> isolée avait donné 181 112 coups/s, soit **1,9 fois moins**. Elle avait été
+> prise juste après l'exécution de la suite de tests et des benchmarks, sur une
+> machine encore chargée et thermiquement sollicitée — un AMD Ryzen 5 5600H est
+> un processeur mobile dont la fréquence dépend fortement de son état.
+>
+> Une mesure unique sur ce matériel ne vaut rien. Toute valeur rapportée ici
+> est une **médiane sur 15 exécutions**, accompagnée de son écart-type, machine
+> au repos et sur secteur.
 
 Par benchmark Go, avec `-benchmem` :
 
@@ -303,7 +316,7 @@ justifiables physiquement, et non fabriqués.
 | `hand.go`, `shoe.go` | `[]*Card` au lieu de `[]Card` | réflexe Java/C# | une allocation par carte, aucune localité |
 | `hand.go` | total recalculé à chaque appel | le plus simple à écrire | parcours complet, plusieurs fois par décision |
 | `hand.go`, `round.go` | champs de structs dans un ordre quelconque | on n'y pense pas | 19 o et 28 o de remplissage |
-| `shoe.go` | mélange par tirage-et-retrait | l'algorithme intuitif | quadratique, ~21 000 déplacements par rebattage |
+| `shoe.go` | mélange par tirage-et-retrait | l'algorithme intuitif | **10 756 déplacements par rebattage** contre 208 pour Fisher-Yates |
 | `shoe.go` | sabot reconstruit par `append` | on repart de zéro | 15,5 Ko et 220 allocations par rebattage |
 | `strategy.go` | clés textuelles via `fmt.Sprintf` dans une `map` | une table se fait avec une map | 3 allocations par décision |
 | `strategy.go` | stratégie derrière une interface | réflexe orienté objet | appel dynamique, pas d'inlining |

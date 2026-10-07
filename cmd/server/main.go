@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/MaximeHer/american-blackjack/internal/blackjack"
+	"github.com/MaximeHer/american-blackjack/internal/metrics"
 )
 
 //go:embed all:web
@@ -173,9 +174,14 @@ func handleSimulate(w http.ResponseWriter, r *http.Request) {
 		side = blackjack.SideBets{PerfectPairs: 1, TwentyOnePlus3: 1, LuckyLadies: 1, Buster: 1}
 	}
 
-	start := time.Now()
+	// La mesure encadre strictement la boucle. Les compteurs du runtime sont
+	// lus avant et après, jamais pendant : le coût de l'instrumentation est
+	// constant et n'entre pas dans le chemin mesuré.
+	blackjack.ResetOps()
+	run := metrics.Begin()
 	st := blackjack.Simulate(rounds, seed, rules, 1, side)
-	elapsed := time.Since(start)
+	m := run.End(int64(st.Rounds))
+	elapsed := m.Wall
 
 	writeJSON(w, map[string]any{
 		"rounds":        st.Rounds,
@@ -194,8 +200,34 @@ func handleSimulate(w http.ResponseWriter, r *http.Request) {
 		"sideEdge":      st.SideEdge() * 100,
 		"sideWagered":   st.SideWagered,
 		"seconds":       elapsed.Seconds(),
-		"roundsPerSec":  float64(st.Rounds) / elapsed.Seconds(),
-		"nsPerRound":    float64(elapsed.Nanoseconds()) / float64(st.Rounds),
+		"roundsPerSec":  m.OpsPerS,
+		"nsPerRound":    m.NsPerOp,
+
+		// Débits dérivés de compteurs déjà tenus par le moteur : aucun coût
+		// supplémentaire dans la boucle.
+		"handsPerSec": float64(st.Hands) / elapsed.Seconds(),
+		"cardsPerSec": float64(st.CardsDealt) / elapsed.Seconds(),
+
+		// Mémoire et ramasse-miettes, lus dans le runtime.
+		"bytesPerRound":  m.BytesPerOp,
+		"allocsPerRound": m.AllocsPerOp,
+		"bytesAllocated": m.BytesAlloc,
+		"allocRateMBs":   m.AllocRateMBs,
+		"gcCycles":       m.GCCycles,
+		"gcPauseTotalMs": m.GCPauseTotalMs,
+		"gcPauseP99Us":   m.GCPauseP99Us,
+		"gcWallShare":    m.GCWallShare,
+		"gcCpuShare":     m.GCCPUShare,
+
+		// Temps CPU et parallélisme effectif.
+		"cpuNsPerRound": m.CPUNsOp,
+		"parallelism":   m.Parallel,
+		"numCPU":        m.NumCPU,
+		"gomaxprocs":    m.GOMAXPROCS,
+
+		// Compteurs d'opérations : vides si le binaire n'est pas instrumenté.
+		"ops":          blackjack.Ops(),
+		"instrumented": blackjack.Instrumented,
 	})
 }
 

@@ -33,6 +33,7 @@ type Hand struct {
 // Total renvoie le meilleur total de la main et indique si elle est souple,
 // c'est-à-dire si un As y compte encore 11.
 func (h *Hand) Total() (int, bool) {
+	countHandTotal()
 	total := 0
 	aces := 0
 	for _, c := range h.Cards {

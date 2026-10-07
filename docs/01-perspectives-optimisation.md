@@ -68,7 +68,7 @@ Le déterminisme à graine fixée, lui, doit être préservé sans exception.
 
 | Mesure | Valeur de référence |
 |---|---|
-| Débit de bout en bout | 181 112 coups/s — 5 521 ns par coup |
+| Débit de bout en bout | 342 306 coups/s médians — 2 921 ns par coup (écart-type 4,52 % sur 15 exécutions) |
 | `PlayRound` | 5 200 ns/op, 1 656 o/op, **46 allocs/op** |
 | `PlayRound` + paris annexes | 4 900 ns/op, 2 081 o/op, **57 allocs/op** |
 | `Shuffle` | 19 300 ns/op, 15 488 o/op, **220 allocs/op** |
@@ -299,16 +299,22 @@ RÉFUTATION   : des allocations résiduelles signalent que le tableau échappe
 
 ### Palier 8 — Mélange de Fisher-Yates en place
 
-**État.** Le mélange tire une carte au hasard dans le paquet et la retire.
-L'algorithme est correct et uniforme, mais chaque retrait décale la fin du
-slice : environ **21 600 déplacements d'éléments** par rebattage, pour un
-travail que Fisher-Yates accomplit en 208 échanges.
+**État mesuré.** Le mélange tire une carte au hasard dans le paquet et la
+retire. L'algorithme est correct et uniforme, mais chaque retrait décale la fin
+du slice.
+
+L'index tiré étant uniforme, le nombre moyen de déplacements vaut n(n−1)/4,
+soit **10 764** pour n = 208. Le comptage instrumenté en mesure **10 756** : la
+prédiction théorique est confirmée. Fisher-Yates accomplit le même travail en
+208 échanges sur place, soit un **facteur 52**.
 
 ```
-HYPOTHÈSE    : la complexité passe de O(n²) à O(n), avec n = 208. Le coût du
-               mélange doit chuter de plus d'un ordre de grandeur, depuis
-               19 300 ns/op. Le rebattage survenant tous les ~29 coups, cela
-               représente environ 660 ns par coup sur les 5 200 mesurés.
+HYPOTHÈSE    : la complexité passe de O(n²) à O(n), avec n = 208, soit un
+               facteur 52 sur le nombre de déplacements (10 756 -> 208, mesuré
+               par le binaire instrumenté). Le coût du mélange doit chuter de
+               plus d'un ordre de grandeur, depuis 19 300 ns/op. Le rebattage
+               survenant tous les ~29 coups, cela représente environ 660 ns par
+               coup.
 VÉRIFICATION : go test -run '^$' -bench Shuffle -benchmem -count 10 \
                  ./internal/blackjack
                go test -run 'TestShoeComposition|TestDeterminisme' -v \

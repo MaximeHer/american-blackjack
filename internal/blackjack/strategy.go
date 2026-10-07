@@ -126,6 +126,7 @@ func init() {
 // handCount est le nombre de mains déjà en jeu pour ce coup, nécessaire pour
 // savoir si un split supplémentaire est encore autorisé.
 func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string {
+	countDecide()
 	upKey := up.NormalizedRank()
 	total, soft := h.Total()
 
@@ -133,6 +134,7 @@ func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string
 	// peut encore ouvrir une main supplémentaire.
 	if h.IsPair() && handCount < r.MaxSplitHands {
 		rank := h.Cards[0].NormalizedRank()
+		countMapLookup()
 		if d, ok := strategyTable[fmt.Sprintf("pair-%s-%s", rank, upKey)]; ok {
 			if d == Split {
 				if canSplit(h, r) {
@@ -148,6 +150,7 @@ func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string
 	if soft {
 		kind = "soft"
 	}
+	countMapLookup()
 	d, ok := strategyTable[fmt.Sprintf("%s-%d-%s", kind, total, upKey)]
 	if !ok {
 		// Totaux souples inférieurs à 13 (une paire d'As non séparable) :

@@ -376,19 +376,40 @@ async function runSim() {
       sidebets: $('#sim-side').checked,
     });
     const d = await api('/api/simulate?' + q);
+    const n = (v) => Math.round(v).toLocaleString('fr-FR');
+
     $('#sim-out').innerHTML = [
+      group('Débit'),
+      metric('Coups par seconde', n(d.roundsPerSec), 'coups/s', true),
+      metric('Temps par coup', n(d.nsPerRound), 'ns (horloge)'),
+      metric('Temps CPU par coup', n(d.cpuNsPerRound), 'ns (CPU)'),
+      metric('Parallélisme effectif', d.parallelism.toFixed(2), 'coeur sur ' + d.numCPU),
+      metric('Mains par seconde', n(d.handsPerSec), 'mains/s'),
+      metric('Cartes par seconde', n(d.cardsPerSec), 'cartes/s'),
+      metric('Durée', d.seconds.toFixed(2), 's'),
+      metric('Coups simulés', d.rounds.toLocaleString('fr-FR'), ''),
+
+      group('Mémoire et ramasse-miettes'),
+      metric('Alloué par coup', n(d.bytesPerRound), 'octets', true),
+      metric('Allocations par coup', d.allocsPerRound.toFixed(1), 'objets', true),
+      metric('Débit d'allocation', n(d.allocRateMBs), 'Mo/s'),
+      metric('Cycles de GC', d.gcCycles.toLocaleString('fr-FR'), ''),
+      metric('Pause GC cumulée', d.gcPauseTotalMs.toFixed(2), 'ms'),
+      metric('Pause GC p99', n(d.gcPauseP99Us), 'µs'),
+      metric('Part horloge du GC', d.gcWallShare.toFixed(2), '%'),
+      metric('Part CPU du GC', d.gcCpuShare.toFixed(2), '%'),
+
+      group('Correction et dispersion'),
       metric('Avantage de la maison', d.houseEdge.toFixed(4), '%', true),
       metric('Erreur-type', '± ' + d.stdError.toFixed(4), 'point'),
       metric('Element of risk', d.elementOfRisk.toFixed(4), '%'),
       metric('Écart-type par coup', d.stdDev.toFixed(4), 'unité de mise'),
-      metric('Débit', Math.round(d.roundsPerSec).toLocaleString('fr-FR'), 'coups/s', true),
-      metric('Temps par coup', Math.round(d.nsPerRound).toLocaleString('fr-FR'), 'ns'),
-      metric('Coups simulés', d.rounds.toLocaleString('fr-FR'), ''),
-      metric('Durée', d.seconds.toFixed(2), 's'),
       metric('Blackjacks joueur', d.playerBJ.toFixed(3), '%'),
       metric('Croupier a joué', d.dealerPlayed.toFixed(2), '% des coups'),
       metric('Croupier sauté', d.dealerBust.toFixed(3), '% des mains jouées'),
       d.sideWagered > 0 ? metric('Avantage paris annexes', d.sideEdge.toFixed(3), '%') : '',
+
+      opsSection(d),
     ].join('');
   } finally {
     btn.disabled = false;
@@ -399,6 +420,33 @@ async function runSim() {
 function metric(k, v, u, hl) {
   return `<div class="metric${hl ? ' hl' : ''}"><div class="k">${k}</div>` +
     `<div class="v">${v} <span class="u">${u}</span></div></div>`;
+}
+
+function group(title) {
+  return `<div class="metric-group">${title}</div>`;
+}
+
+// opsSection n'affiche les compteurs d'opérations que si le binaire a été
+// compilé avec -tags instrument. Dans le binaire par défaut ils n'existent pas,
+// et c'est volontaire : un compteur dans la boucle falsifierait la mesure.
+function opsSection(d) {
+  if (!d.instrumented || !d.ops || !d.ops.enabled) {
+    return group('Opérations élémentaires') +
+      `<div class="metric note">Binaire non instrumenté — aucun compteur n'est ` +
+      `compilé dedans, afin que la boucle mesurée reste exactement celle de ` +
+      `production.<br><code>go run -tags instrument ./cmd/server</code></div>`;
+  }
+  const r = d.rounds || 1;
+  const o = d.ops;
+  const per = (v) => (v / r).toFixed(2);
+  return [
+    group('Opérations élémentaires (binaire instrumenté)'),
+    metric('Décisions', per(o.decisions), 'par coup'),
+    metric('Appels à Total()', per(o.handTotals), 'par coup'),
+    metric('Évaluations de carte', per(o.cardValues), 'par coup'),
+    metric('Consultations de map', per(o.mapLookups), 'par coup', true),
+    metric('Déplacements de mélange', Math.round(o.shuffleMoves / (d.shuffles || 1)).toLocaleString('fr-FR'), 'par rebattage', true),
+  ].join('');
 }
 
 /* ---------------------- Graphique de convergence ---------------------- */
