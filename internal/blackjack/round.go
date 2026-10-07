@@ -155,7 +155,7 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 				break
 			}
 
-			action := DefaultStrategy.Decide(h, up, r, len(hands))
+			action := decideBasic(h, up, r, len(hands))
 			if tr != nil {
 				tr.add("Main %d (%s) : %s.", i+1, h.Describe(), actionLabel(action))
 			}

@@ -106,7 +106,11 @@ func BenchmarkHandTotal(b *testing.B) {
 }
 
 // BenchmarkDecide isole la consultation de la stratégie de base : construction
-// d'une clé textuelle, hachage, et appel par interface.
+// d'une clé textuelle puis hachage.
+//
+// Mesure l'appel tel que le moteur le fait, c'est-à-dire direct. Mesurer
+// DefaultStrategy.Decide() au travers de l'interface mesurerait un chemin que
+// le moteur n'emprunte plus.
 func BenchmarkDecide(b *testing.B) {
 	r := DefaultRules()
 	h := &Hand{Cards: []*Card{
@@ -118,7 +122,7 @@ func BenchmarkDecide(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = DefaultStrategy.Decide(h, up, r, 1)
+		_ = Decide(h, up, r, 1)
 	}
 }
 

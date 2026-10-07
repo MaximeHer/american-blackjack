@@ -11,28 +11,40 @@ const (
 	Surrender = "R"
 )
 
-// Strategy décide du coup à jouer.
+// Strategy décide du coup à jouer. C'est le point d'extension du moteur : une
+// stratégie avec comptage de cartes viendrait s'y brancher.
 //
-// VERSION DE RÉFÉRENCE : faire passer la décision par une interface est le
-// réflexe orienté objet, et il se paie. L'appel devient dynamique — une
-// indirection par table de méthodes à chaque décision — ce qui empêche le
-// compilateur d'inliner Decide et donc de propager les constantes ou
-// d'éliminer les branches mortes. Le moteur n'a pourtant qu'une seule
-// implémentation, connue à la compilation.
+// PALIER 3. Le moteur NE PASSE PAS par cette interface. La version de référence
+// routait chaque décision à travers elle, ce qui est le réflexe orienté objet et
+// se paie : l'appel devient dynamique, donc le compilateur ne peut ni l'inliner
+// ni spécialiser son corps, alors qu'il n'existe qu'une seule implémentation
+// connue à la compilation.
+//
+// L'interface est conservée pour ce qu'elle apporte réellement — la possibilité
+// de substituer une autre stratégie — mais le chemin chaud appelle directement
+// decideBasic. Les deux besoins sont ainsi satisfaits sans que l'un ne grève
+// l'autre.
 type Strategy interface {
 	Decide(h *Hand, up *Card, r Rules, handCount int) string
 	TakeInsurance(up *Card) bool
 	Name() string
 }
 
-// DefaultStrategy est la stratégie appliquée par le moteur.
-var DefaultStrategy Strategy = &BasicStrategy{}
-
-// BasicStrategy applique la stratégie de base publiée.
+// BasicStrategy expose la stratégie de base derrière l'interface Strategy, pour
+// les appelants qui veulent la manipuler comme telle. Ses méthodes délèguent aux
+// fonctions libres, qui sont ce que le moteur appelle.
 type BasicStrategy struct{}
 
 // Name identifie la stratégie dans le journal d'un coup.
 func (b *BasicStrategy) Name() string { return "stratégie de base" }
+
+// Decide satisfait l'interface Strategy en déléguant à la fonction libre.
+func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string {
+	return decideBasic(h, up, r, handCount)
+}
+
+// TakeInsurance satisfait l'interface Strategy en déléguant à la fonction libre.
+func (b *BasicStrategy) TakeInsurance(up *Card) bool { return takeInsuranceBasic(up) }
 
 // dealerColumns donne l'ordre des colonnes dans les tables ci-dessous :
 // la carte visible du croupier, de 2 à l'As.
@@ -125,7 +137,7 @@ func init() {
 //
 // handCount est le nombre de mains déjà en jeu pour ce coup, nécessaire pour
 // savoir si un split supplémentaire est encore autorisé.
-func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string {
+func decideBasic(h *Hand, up *Card, r Rules, handCount int) string {
 	countDecide()
 	upKey := up.NormalizedRank()
 	total, soft := h.Total()
@@ -163,19 +175,19 @@ func (b *BasicStrategy) Decide(h *Hand, up *Card, r Rules, handCount int) string
 	return degrade(d, h, r, total, soft)
 }
 
-// TakeInsurance décide de prendre ou non l'assurance. La stratégie de base la
-// refuse toujours : sans comptage de cartes, c'est un pari dont l'espérance
+// takeInsuranceBasic décide de prendre ou non l'assurance. La stratégie de base
+// la refuse toujours : sans comptage de cartes, c'est un pari dont l'espérance
 // est négative d'environ 7 %.
-func (b *BasicStrategy) TakeInsurance(up *Card) bool { return false }
+func takeInsuranceBasic(up *Card) bool { return false }
 
-// Decide applique la stratégie par défaut du moteur. Conservé comme fonction
-// libre pour les appelants qui n'ont pas à connaître l'interface.
+// Decide applique la stratégie de base. Appel statique, inlinable, sans
+// indirection par table de méthodes.
 func Decide(h *Hand, up *Card, r Rules, handCount int) string {
-	return DefaultStrategy.Decide(h, up, r, handCount)
+	return decideBasic(h, up, r, handCount)
 }
 
-// TakeInsurance applique la stratégie par défaut du moteur.
-func TakeInsurance(up *Card) bool { return DefaultStrategy.TakeInsurance(up) }
+// TakeInsurance applique la stratégie de base.
+func TakeInsurance(up *Card) bool { return takeInsuranceBasic(up) }
 
 // canSplit vérifie qu'une paire est effectivement séparable compte tenu des
 // règles : une paire d'As déjà issue d'un split ne se resépare que si la table
