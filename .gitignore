@@ -26,6 +26,10 @@ trace.out
 !/bench/*.txt
 /bench/*.json
 
+# Dossiers de mesure horodates, produits par le harnais. Regenerables, et
+# contenant des binaires : seul leur resume merite d'etre cite dans le rapport.
+/results/
+
 # Couverture
 coverage.out
 coverage.html

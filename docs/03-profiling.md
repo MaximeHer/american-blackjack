@@ -253,9 +253,16 @@ avant aurait été du travail perdu.
 ## 8. Reproduire ce diagnostic
 
 ```bash
+bash scripts/run_benchmarks.sh profile   # génère les profils et toutes les analyses
+```
+
+Ou, si `make` est disponible :
+
+```bash
 make profile        # génère profiles/cpu.out et profiles/mem.out
 make profile-top    # les tableaux de la section 2
 make profile-lines  # les annotations de la section 3
+make flame          # flamegraph interactif
 ```
 
 Les profils eux-mêmes ne sont pas versionnés : ils sont régénérables, et dépendent

@@ -17,10 +17,10 @@ L1/L2/L3, RAM, OS, version exacte du runtime) et protocole Hyperfine rigoureux
 
 | Élément | État |
 |---|---|
-| Relevé matériel automatisé, caches L1/L2/L3 inclus | à faire |
+| Relevé matériel automatisé, caches L1/L2/L3 inclus | **acquis** — `scripts/hardware.ps1`, signale aussi le simple canal mémoire |
 | Version exacte du runtime figée | partiel — `go 1.26` déclaré, toolchain à épingler |
-| Protocole Hyperfine avec `--warmup` et itérations | à faire |
-| Isolation du bruit documentée | à faire |
+| Protocole Hyperfine avec `--warmup` et itérations | **acquis** — `--shell=none --warmup 3 --runs 15`, 621,8 ms ± 2,0 % |
+| Isolation du bruit documentée | **acquis** — le harnais refuse de mesurer sur batterie et avertit si la machine est chargée |
 | Écart-type et variance | **acquis** — produits par le moteur (`Stats.StdDev`, `Stats.Variance`, `Stats.StdError`) |
 | Benchmarks Go isolés par étage | **acquis** — `bench_test.go`, 8 benchmarks, mesure de référence dans `bench/baseline.txt` |
 | Tailles de structures et remplissage | **acquis** — `TestStructSizes` |
@@ -156,11 +156,12 @@ les gains d'ordres de grandeur.
 
 | Élément | État |
 |---|---|
-| `Makefile` ou `run_benchmarks.sh` en une commande | à faire |
-| Relevé matériel intégré au script | à faire |
-| Comparaison par `benchstat` entre paliers | à faire |
-| Mesures de bout en bout par `hyperfine` | à faire |
-| Tableau de synthèse baseline vs final | à faire |
+| `run_benchmarks.sh` en une commande | **acquis** — produit tout le dossier de mesure |
+| `Makefile` en complément | **acquis** — `make measure`, `make check`, `make flame` |
+| Relevé matériel intégré au script | **acquis** |
+| Comparaison par `benchstat` entre paliers | **acquis** — automatique contre `bench/baseline.txt` |
+| Mesures de bout en bout par `hyperfine` | **acquis** |
+| Tableau de synthèse baseline vs final | à produire en fin de campagne |
 
 Le drapeau `-quiet` de la commande `simulate` n'émet que le débit, pour être
 consommé directement par `hyperfine`.

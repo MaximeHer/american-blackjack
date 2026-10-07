@@ -117,6 +117,32 @@ conservée par principe, non par nécessité démontrée.
 Le drapeau `-quiet` n'émet que le débit, ce qui rend la commande directement
 consommable par un script ou par `hyperfine`.
 
+### 3.1 bis Mesure de bout en bout par hyperfine
+
+```bash
+hyperfine --shell=none --warmup 3 --runs 15   --export-markdown resultat.md --export-json resultat.json   './simulate -rounds 500000 -quiet'
+```
+
+Résultat sur la version courante : **621,8 ms ± 12,5 ms** pour 500 000 coups,
+étendue 599,8 – 639,1 ms, soit **804 000 coups/s** avec un écart-type de
+**2,0 %** — la meilleure dispersion obtenue sur ce projet.
+
+Trois décisions de protocole, chacune pour une raison précise.
+
+**`--shell=none`.** Sans cette option, hyperfine passe par `cmd.exe` sous
+Windows, ce qui a d'abord provoqué un échec — `cmd.exe` refuse un chemin relatif
+à barres obliques. Mais c'est surtout meilleur méthodologiquement : exécuter le
+binaire directement **retire le lancement du shell du temps mesuré**, qui n'a
+rien à voir avec ce qu'on cherche à chiffrer.
+
+**Pas de `-warmup` du moteur sous hyperfine.** Les deux chauffes se cumulaient :
+les coups de chauffe internes entraient dans le temps mesuré, donc le temps
+rapporté ne se divisait pas proprement par le nombre de coups annoncé. La chauffe
+est désormais assurée au seul niveau du processus, par `--warmup 3`.
+
+**`--runs 15`.** Même raisonnement qu'à la section 3.1 : une mesure unique sur ce
+matériel ne vaut rien.
+
 ### 3.2 Micro-benchmarks
 
 Pour attribuer un gain à un changement précis.
@@ -321,12 +347,60 @@ Relevées par `unsafe.Sizeof` dans `TestStructSizes`.
 
 ---
 
-## 6. Reste à mettre en place
+## 6. Le harnais, en une commande
+
+```bash
+bash scripts/run_benchmarks.sh
+```
+
+Produit l'intégralité du dossier de mesure dans `results/<horodatage>/` :
+
+| Fichier | Contenu |
+|---|---|
+| `00-banc-essai.txt` | relevé matériel complet, conditions vérifiées |
+| `10-oracle.txt` | oracle de non-régression |
+| `20-bench.txt`, `21`, `22` | benchmarks, dispersion, comparaison au tag `v0-baseline` |
+| `30`–`32-hyperfine.*` | mesure de bout en bout, en markdown et JSON |
+| `33`–`34-metriques.*` | débit, mémoire, GC et ordonnanceur du moteur |
+| `35-operations.txt` | compteurs d'opérations, binaire instrumenté séparé |
+| `41`–`44-*` | profils CPU et allocations, annotations ligne par ligne |
+| `99-resume.md` | résumé citable, avec la révision Git mesurée |
+
+Étapes isolables : `hardware`, `test`, `bench`, `hyperfine`, `profile`.
+
+Paramétrable par variables d'environnement : `ROUNDS`, `BENCH_TIME`,
+`BENCH_COUNT`, `HF_RUNS`, `HF_WARMUP`.
+
+### Deux refus délibérés
+
+**Le harnais refuse de mesurer sur batterie.** Il interrompt la campagne avec un
+message explicite. Une mesure sur batterie n'est pas imprécise, elle est fausse
+— voir la section 4.1 et son facteur 1,9.
+
+**Le harnais s'arrête si l'oracle échoue**, avant même de lancer le moindre
+benchmark. Chiffrer les performances d'un moteur dont la logique est cassée n'a
+aucun sens, et l'ordre des étapes le fait respecter mécaniquement.
+
+Le résumé consigne la révision Git mesurée et signale un arbre de travail
+modifié, afin qu'aucun chiffre ne puisse être cité sans savoir à quel état du
+code il correspond.
+
+### Un `Makefile` en complément
+
+`make` n'est pas installé sur la machine de développement. Le script bash est
+donc le point d'entrée canonique. Un `Makefile` est fourni pour les
+environnements qui ont `make`, et sert de table des matières des commandes :
+`make measure`, `make check`, `make oracle`, `make profile-lines`, `make flame`.
+
+---
+
+## 7. Reste à mettre en place
 
 | Élément | État |
 |---|---|
-| Relevé matériel automatisé | à scripter |
-| Protocole `hyperfine --warmup --runs` | **à faire** — nommé explicitement par le critère 1 |
-| `Makefile` / `run_benchmarks.sh` en une commande | à faire (critère 5) |
-| Profils CPU et allocations annotés | à faire (critère 2) |
-| Flamegraphs | à faire (critère 2) |
+| Relevé matériel automatisé | **acquis** — `scripts/hardware.ps1` |
+| Protocole `hyperfine --warmup --runs` | **acquis** — § 3.1 bis |
+| `run_benchmarks.sh` en une commande | **acquis** — § 6 |
+| Profils CPU et allocations annotés | **acquis** — [03-profiling.md](03-profiling.md) |
+| Flamegraph | commande documentée, capture à joindre au rapport |
+| Tableau de synthèse final | à produire en fin de campagne (critère 5) |

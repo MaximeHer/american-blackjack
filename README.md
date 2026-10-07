@@ -213,7 +213,45 @@ prouve en mesurant l'avantage de la maison par les deux chemins.
 
 ---
 
-## 6. Métriques
+## 6. Harnais de mesure
+
+Toute la campagne de mesure, en **une seule commande** :
+
+```bash
+bash scripts/run_benchmarks.sh
+```
+
+Elle produit `results/<horodatage>/` contenant le relevé du banc d'essai, la
+validation de l'oracle, les benchmarks comparés au tag `v0-baseline`, la mesure
+de bout en bout par `hyperfine`, les compteurs d'opérations, les profils CPU et
+allocations avec leurs annotations ligne par ligne, et un résumé citable
+mentionnant la révision Git mesurée.
+
+Étapes isolables : `hardware`, `test`, `bench`, `hyperfine`, `profile`.
+
+Avec `make`, si disponible : `make measure`, `make check`, `make oracle`,
+`make profile-lines`, `make flame`.
+
+Prérequis :
+
+```bash
+go install golang.org/x/perf/cmd/benchstat@latest
+winget install sharkdp.hyperfine
+```
+
+### Deux refus délibérés
+
+Le harnais **refuse de mesurer sur batterie** et interrompt la campagne. Une
+mesure sur batterie n'est pas imprécise, elle est fausse : le même binaire a
+donné 181 112 et 342 306 coups/s selon l'état de la machine.
+
+Le harnais **s'arrête si l'oracle échoue**, avant de lancer le moindre
+benchmark. Chiffrer les performances d'un moteur dont la logique est cassée n'a
+aucun sens.
+
+---
+
+## 7. Métriques
 
 Le moteur rapporte son propre comportement, sans jamais être instrumenté dans
 la boucle mesurée.
@@ -261,7 +299,7 @@ Protocole complet et banc d'essai :
 
 ---
 
-## 7. Oracle de non-régression
+## 8. Oracle de non-régression
 
 C'est la pièce maîtresse du dispositif. L'avantage de la maison au blackjack
 est une grandeur **publiée** : le moteur doit la reproduire, ce qui permet de
@@ -305,7 +343,7 @@ cartes et décale l'avantage du jeu principal. L'oracle doit donc se mesurer
 
 ---
 
-## 8. Mesure de référence
+## 9. Mesure de référence
 
 Relevée sur la machine de développement, Go 1.26.4, windows/amd64, 12 coeurs
 logiques dont **un seul utilisé**.
@@ -359,7 +397,7 @@ Le facteur sur la représentation est donc de **32**, et une ligne de cache de
 Ces chiffres n'ont de valeur qu'accompagnés de la spécification complète du
 banc d'essai et d'un protocole statistique — voir [docs/](docs/).
 
-## 9. Choix volontairement naïfs de la baseline
+## 10. Choix volontairement naïfs de la baseline
 
 Chacun est documenté dans le code à l'endroit où il est fait, avec son coût
 physique. Ce sont les cibles du travail d'optimisation.
@@ -395,7 +433,7 @@ jamais. C'est la forme la plus courante de gaspillage en production : un code
 partagé entre deux usages paie le coût du plus exigeant des deux. L'optimisation
 consistera à le rendre explicite, pas à le supprimer.
 
-## 10. Structure
+## 11. Structure
 
 ```
 .
@@ -420,6 +458,11 @@ consistera à le rendre explicite, pas à le supprimer.
 │   ├── blackjack_test.go  # oracle et tests de correction
 │   └── table_test.go      # validation croisée Table / PlayRound
 ├── internal/metrics/       # métriques runtime, lues autour de la boucle
+├── scripts/
+│   ├── run_benchmarks.sh  # LE harnais, une seule commande
+│   └── hardware.ps1       # relevé du banc d'essai
+├── Makefile               # table des matières des commandes
+├── bench/                 # relevés de mesure versionnés
 ├── docs/
 │   ├── 00-grille-et-plan.md             # suivi de la couverture des critères
 │   ├── 01-perspectives-optimisation.md  # les 18 paliers, hypothèse par hypothèse
@@ -429,7 +472,7 @@ consistera à le rendre explicite, pas à le supprimer.
 
 ---
 
-## 11. Feuille de route d'optimisation
+## 12. Feuille de route d'optimisation
 
 Chaque palier fait l'objet d'une branche, d'une mesure isolée par `benchstat`
 et d'une entrée au journal d'optimisation.
