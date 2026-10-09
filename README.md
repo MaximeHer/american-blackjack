@@ -141,7 +141,17 @@ go run ./cmd/simulate -rounds 2000000 -h17 -decks 8 -surrender=false
 
 # Débit seul, pour les mesures automatisées
 go run ./cmd/simulate -rounds 2000000 -quiet
+
+# Parallèle : un worker par coeur logique
+go run ./cmd/simulate -rounds 20000000 -workers 0
+
+# Nombre de workers imposé, pour tracer la courbe d'accélération
+go run ./cmd/simulate -rounds 2000000 -workers 6
 ```
+
+`-workers 1` est le **mode de référence** : strictement séquentiel, c'est lui
+qui sert à toutes les comparaisons de paliers. `-workers 0` prend
+`runtime.NumCPU()`.
 
 `-quiet` n'émet que le nombre de coups par seconde, ce qui le rend directement
 consommable par un script de mesure.
@@ -345,57 +355,59 @@ cartes et décale l'avantage du jeu principal. L'oracle doit donc se mesurer
 
 ## 9. Mesure de référence
 
-Relevée sur la machine de développement, Go 1.26.4, windows/amd64, 12 coeurs
-logiques dont **un seul utilisé**.
+Conditions de la section 6 — machine sur secteur, au repos.
 
-De bout en bout, sur le binaire, **15 exécutions de 500 000 coups**, machine
-sur secteur et au repos :
+### Bout en bout
 
-| Métrique | Valeur |
-|---|---|
-| Débit médian | **342 306 coups/s** |
-| Temps par coup | **2 921 ns** |
-| Écart-type | 15 363 coups/s — **4,52 %** |
-| Étendue min–max | 297 537 – 355 637 coups/s (17 % de la médiane) |
+| Mode | Débit | Temps par coup |
+|---|---|---|
+| Version de référence (tag `v0-baseline`) | 342 306 coups/s | 2 921 ns |
+| Séquentiel optimisé | **6 026 483 coups/s** | 166 ns |
+| **12 workers** | **34 485 553 coups/s** | **31 ns** |
 
-> **Avertissement de protocole, appris à nos dépens.** Une première mesure
-> isolée avait donné 181 112 coups/s, soit **1,9 fois moins**. Elle avait été
-> prise juste après l'exécution de la suite de tests et des benchmarks, sur une
-> machine encore chargée et thermiquement sollicitée — un AMD Ryzen 5 5600H est
-> un processeur mobile dont la fréquence dépend fortement de son état.
->
-> Une mesure unique sur ce matériel ne vaut rien. Toute valeur rapportée ici
-> est une **médiane sur 15 exécutions**, accompagnée de son écart-type, machine
-> au repos et sur secteur.
+Soit **×17,6 en séquentiel** et **×100,7 en parallèle** depuis la baseline.
 
-Par benchmark Go, avec `-benchmem` :
+### Courbe d'accélération
 
-| Benchmark | Temps | Mémoire | Allocations |
+Mesurée sur 200 000 coups par itération, `-benchtime 3s -count 6`.
+
+| Workers | Débit | Speedup |
+|---|---|---|
+| 1 | 5 829 390/s | 1,00× |
+| 2 | 8 888 809/s | 1,52× |
+| 4 | 15 044 784/s | 2,58× |
+| **6** — cœurs physiques | 20 651 043/s | **3,54×** |
+| 8 | 24 743 210/s | 4,24× |
+| **12** — cœurs logiques | 27 709 084/s | **4,75×** |
+
+L'accélération est **sous-linéaire**, et pour deux raisons mesurables. Jusqu'à
+6 workers, les cœurs physiques se partagent la bande passante mémoire — or la
+machine n'a **qu'une barrette**, donc un seul canal. Au-delà de 6, les workers
+se partagent les unités de calcul d'un même cœur physique : l'hyperthreading
+masque des latences mais ne double pas le silicium, et n'apporte que ×1,34
+supplémentaire.
+
+### Benchmarks
+
+| Benchmark | Baseline | Actuel | Gain |
 |---|---|---|---|
-| `PlayRound` — un coup complet | 5 200 ns/op | 1 656 o/op | **46 allocs/op** |
-| `PlayRound` avec paris annexes | 4 900 ns/op | 2 081 o/op | **57 allocs/op** |
-| `Shuffle` — un rebattage | 19 300 ns/op | 15 488 o/op | **220 allocs/op** |
-| `Decide` — une décision | 264 ns/op | 48 o/op | 3 allocs/op |
-| `HandTotal` | 36,6 ns/op | 0 | 0 |
-| `Simulate` — 10 000 coups | 41 ms/op | **16,5 Mo/op** | **469 801 allocs/op** |
+| `PlayRound` | 3 731 ns / 46 allocs | **164,5 ns / 0 alloc** | −95,6 % |
+| `Decide` | 217,8 ns / 3 allocs | **9,1 ns / 0 alloc** | −95,8 % |
+| `Shuffle` | 21,2 µs / 220 allocs | 1,75 µs / 1 alloc | −91,8 % |
+| `HandTotal` | 31,3 ns | 3,2 ns | −89,7 % |
+| `Simulate` 10⁴ coups | 34,0 ms / 469 800 allocs | 1,75 ms / **344 allocs** | −94,9 % |
 
-Les 16,5 Mo alloués pour 10 000 coups représentent **1,65 Go par million de
-coups** : la pression sur le ramasse-miettes est le premier suspect du profil.
+### Comportement mémoire
 
-Tailles des structures, relevées par `unsafe.Sizeof` (voir `TestStructSizes`) :
+| Grandeur | Baseline | Actuel |
+|---|---|---|
+| Allocations par coup | 46 | **0,03** |
+| Cycles de GC sur 2 M coups | 244 | **4** |
+| Part CPU du ramasse-miettes | 15,25 % | **0,00 %** |
+| Parallélisme effectif, mode séquentiel | 1,32 cœur | **1,01 cœur** |
 
-| Structure | Taille | Champs utiles | Remplissage |
-|---|---|---|---|
-| `Card` | 32 o | 32 o | 0 o |
-| `Hand` | 56 o | 37 o | **19 o (34 %)** |
-| `RoundResult` | 104 o | 76 o | **28 o (27 %)** |
-
-Une carte tiendrait dans **un seul octet** — 4 bits de rang, 2 bits d'enseigne.
-Le facteur sur la représentation est donc de **32**, et une ligne de cache de
-64 octets contient 2 cartes au lieu de 64.
-
-Ces chiffres n'ont de valeur qu'accompagnés de la spécification complète du
-banc d'essai et d'un protocole statistique — voir [docs/](docs/).
+Le parallélisme effectif à 1,01 en mode séquentiel signifie que le
+ramasse-miettes ne mobilise plus aucun autre cœur.
 
 ## 10. Choix volontairement naïfs de la baseline
 
@@ -472,41 +484,44 @@ consistera à le rendre explicite, pas à le supprimer.
 
 ---
 
-## 12. Feuille de route d'optimisation
+## 12. Paliers d'optimisation réalisés
 
-Chaque palier fait l'objet d'une branche, d'une mesure isolée par `benchstat`
-et d'une entrée au journal d'optimisation.
+Chaque palier a sa branche, sa mesure `benchstat` dans [bench/](bench/) et son
+commit dédié. L'ordre a été **dicté par le profil**, pas par un plan a priori —
+voir [docs/03-profiling.md](docs/03-profiling.md).
 
-**Mémoire et localité de cache**
+| # | Palier | Gain principal |
+|---|---|---|
+| 1 | Journal narratif rendu explicite | `PlayRound` −47 % |
+| 2 | Combinaisons des paris annexes en entiers | local −11,6 %, **neutre au global** |
+| 3 | Stratégie dévirtualisée | `Decide` −10,6 % |
+| 4 | Mélange de Fisher-Yates en place | `Shuffle` −42 %, O(n²) → O(n) |
+| 5 | **Carte sur un octet, stockée par valeur** | geomean −83 % |
+| 6 | Réordonnancement des champs | `Hand` 56 → 40 o |
+| 7 | **Table de stratégie plate indexée** | `Decide` −95 % |
+| 8 | **Mains en tableaux fixes sur la pile** | **0 allocs/op** |
+| 9 | **Worker pool borné** | **×4,75 sur 12 cœurs** |
 
-1. Journal narratif rendu explicite, retiré du chemin de simulation
-2. `map[string]int` → tableau indexé pour la valeur des cartes
-3. `[]*Card` → `[]Card` : suppression de l'allocation par carte
-4. `Card` compactée sur 1 octet (4 bits de rang, 2 bits d'enseigne)
-5. Sabot en tableau fixe distribué par curseur, zéro allocation
-6. Mélange de Fisher-Yates en place
-7. Total de la main maintenu en incrémental
-8. Réordonnancement des champs de `Hand` et `RoundResult`
-9. Mains en tableaux fixes, suppression du dernier `append`
+### Échec constructif
 
-**Concurrence et scalabilité**
+La mémoïsation de `Hand.Total` a été tentée, mesurée, et **annulée** : −72,6 %
+de débit. Branche `echec/memoisation-total` conservée, analyse dans
+[docs/04-echec-constructif.md](docs/04-echec-constructif.md).
 
-10. Stratégie dévirtualisée, table plate indexée arithmétiquement
-11. Worker pool borné aux coeurs physiques, générateur par worker
-12. Agrégation atomique ou fusion locale sans contention
-13. Arrêt précoce sur critère d'intervalle de confiance
+### Ce qui reste
 
-**I/O réseau et persistance**
+L'axe **I/O réseau et persistance** du critère 3 n'est pas traité : streaming
+binaire à la place du JSON WebSocket, et persistance indexée des résultats.
 
-14. API binaire Protobuf/gRPC comparée à la sérialisation JSON
-15. Persistance indexée des résultats par jeu de règles, `EXPLAIN ANALYZE`
-16. Cache LRU des configurations déjà simulées
+---
 
-L'invariant est absolu : **l'avantage de la maison mesuré ne doit pas bouger**.
-`go test ./...` avant chaque fusion, sans exception.
+## 13. Invariant
 
-Chaque palier est détaillé dans
-[docs/01-perspectives-optimisation.md](docs/01-perspectives-optimisation.md) :
-hypothèse d'impact matériel, commande de vérification, condition de réfutation,
-et axe de la grille visé. Les quatre échecs planifiés du critère 4 y sont
-également documentés, avec leur mécanisme et la mesure qui les révèle.
+L'avantage de la maison mesuré ne doit jamais dévier de plus de 4 erreurs-types
+de la valeur publiée. `go test ./...` avant chaque fusion, sans exception.
+
+Sur les neuf paliers, il est resté **à l'identique au chiffre près** à chaque
+fois, sauf aux deux endroits où l'ordre de consommation du générateur change
+légitimement — Fisher-Yates et la parallélisation par graines dérivées. Dans ces
+deux cas la validation croisée `Table` / `PlayRound` a confirmé que seules les
+cartes avaient changé, pas les règles.

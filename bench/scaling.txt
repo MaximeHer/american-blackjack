@@ -1,0 +1,42 @@
+goos: windows
+goarch: amd64
+pkg: github.com/MaximeHer/american-blackjack/internal/blackjack
+cpu: AMD Ryzen 5 5600H with Radeon Graphics         
+BenchmarkSimulateParallel/workers01-12         	     100	  34127371 ns/op	 1432828 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers01-12         	     100	  34146371 ns/op	 1432769 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers01-12         	     100	  34467630 ns/op	 1432775 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers01-12         	     100	  34150183 ns/op	 1432778 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers01-12         	     100	  36905701 ns/op	 1432774 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers01-12         	     100	  35365602 ns/op	 1432771 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers02-12         	     159	  22522419 ns/op	 1437870 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers02-12         	     158	  22477984 ns/op	 1437905 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers02-12         	     158	  22611848 ns/op	 1437838 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers02-12         	     160	  22029320 ns/op	 1437847 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers02-12         	     159	  22523564 ns/op	 1437853 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers02-12         	     163	  21647309 ns/op	 1437831 B/op	    6866 allocs/op
+BenchmarkSimulateParallel/workers04-12         	     271	  13157372 ns/op	 1449217 B/op	    6872 allocs/op
+BenchmarkSimulateParallel/workers04-12         	     256	  13321002 ns/op	 1449300 B/op	    6872 allocs/op
+BenchmarkSimulateParallel/workers04-12         	     274	  13144868 ns/op	 1449186 B/op	    6872 allocs/op
+BenchmarkSimulateParallel/workers04-12         	     272	  13384461 ns/op	 1449154 B/op	    6872 allocs/op
+BenchmarkSimulateParallel/workers04-12         	     272	  13266285 ns/op	 1449163 B/op	    6872 allocs/op
+BenchmarkSimulateParallel/workers04-12         	     273	  13417834 ns/op	 1449167 B/op	    6872 allocs/op
+BenchmarkSimulateParallel/workers06-12         	     379	   9600160 ns/op	 1460320 B/op	    6877 allocs/op
+BenchmarkSimulateParallel/workers06-12         	     372	   9683213 ns/op	 1460306 B/op	    6877 allocs/op
+BenchmarkSimulateParallel/workers06-12         	     348	   9734664 ns/op	 1460365 B/op	    6877 allocs/op
+BenchmarkSimulateParallel/workers06-12         	     367	   9736107 ns/op	 1460308 B/op	    6877 allocs/op
+BenchmarkSimulateParallel/workers06-12         	     349	   9686269 ns/op	 1460308 B/op	    6877 allocs/op
+BenchmarkSimulateParallel/workers06-12         	     364	   9644866 ns/op	 1460304 B/op	    6877 allocs/op
+BenchmarkSimulateParallel/workers08-12         	     451	   8218670 ns/op	 1471821 B/op	    6884 allocs/op
+BenchmarkSimulateParallel/workers08-12         	     448	   8713864 ns/op	 1471806 B/op	    6884 allocs/op
+BenchmarkSimulateParallel/workers08-12         	     457	   8020859 ns/op	 1471801 B/op	    6884 allocs/op
+BenchmarkSimulateParallel/workers08-12         	     453	   8145192 ns/op	 1471816 B/op	    6884 allocs/op
+BenchmarkSimulateParallel/workers08-12         	     450	   7923231 ns/op	 1471807 B/op	    6884 allocs/op
+BenchmarkSimulateParallel/workers08-12         	     426	   7890863 ns/op	 1471801 B/op	    6884 allocs/op
+BenchmarkSimulateParallel/workers12-12         	     508	   7619930 ns/op	 1494734 B/op	    6897 allocs/op
+BenchmarkSimulateParallel/workers12-12         	     447	   7398430 ns/op	 1494726 B/op	    6897 allocs/op
+BenchmarkSimulateParallel/workers12-12         	     466	   7311396 ns/op	 1494740 B/op	    6897 allocs/op
+BenchmarkSimulateParallel/workers12-12         	     505	   7124303 ns/op	 1494729 B/op	    6897 allocs/op
+BenchmarkSimulateParallel/workers12-12         	     524	   6976808 ns/op	 1494743 B/op	    6897 allocs/op
+BenchmarkSimulateParallel/workers12-12         	     499	   7109156 ns/op	 1494741 B/op	    6897 allocs/op
+PASS
+ok  	github.com/MaximeHer/american-blackjack/internal/blackjack	165.630s

@@ -138,3 +138,27 @@ func Simulate(n int, seed int64, r Rules, bet float64, sb SideBets) Stats {
 	st.CardsDealt = shoe.CardsDealt
 	return st
 }
+
+// Merge agrège les statistiques d'un autre lot.
+//
+// L'opération est associative sur les compteurs entiers, donc l'ordre de
+// fusion ne change rien pour eux. Elle ne l'est PAS sur les sommes flottantes,
+// l'addition en virgule flottante perdant de la précision différemment selon
+// l'ordre : c'est pourquoi SimulateParallel fusionne toujours dans l'ordre des
+// indices de worker, jamais dans l'ordre d'arrivée.
+func (st *Stats) Merge(o Stats) {
+	st.Rounds += o.Rounds
+	st.Hands += o.Hands
+	st.MainWagered += o.MainWagered
+	st.Action += o.Action
+	st.MainNet += o.MainNet
+	st.SumSqNet += o.SumSqNet
+	st.SideWagered += o.SideWagered
+	st.SideNet += o.SideNet
+	st.PlayerBJ += o.PlayerBJ
+	st.DealerBJ += o.DealerBJ
+	st.DealerPlayed += o.DealerPlayed
+	st.DealerBust += o.DealerBust
+	st.Shuffles += o.Shuffles
+	st.CardsDealt += o.CardsDealt
+}

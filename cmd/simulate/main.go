@@ -13,10 +13,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/MaximeHer/american-blackjack/internal/blackjack"
@@ -39,6 +41,8 @@ func main() {
 		plus3        = flag.Float64("21plus3", 0, "mise sur 21+3")
 		luckyLadies  = flag.Float64("lucky-ladies", 0, "mise sur Lucky Ladies")
 		buster       = flag.Float64("buster", 0, "mise sur Buster Blackjack")
+
+		workers = flag.Int("workers", 1, "nombre de workers ; 0 pour runtime.NumCPU()")
 
 		quiet  = flag.Bool("quiet", false, "n'afficher que les coups par seconde")
 		asJSON = flag.Bool("json", false, "émettre toutes les métriques en JSON")
@@ -74,7 +78,14 @@ func main() {
 	// La mesure encadre strictement la boucle, et rien d'autre.
 	blackjack.ResetOps()
 	run := metrics.Begin()
-	st := blackjack.Simulate(*rounds, *seed, rules, *bet, side)
+	var st blackjack.Stats
+	if *workers == 1 {
+		// Chemin séquentiel : c'est celui qui sert de référence, et il évite
+		// toute coordination.
+		st = blackjack.Simulate(*rounds, *seed, rules, *bet, side)
+	} else {
+		st = blackjack.SimulateParallel(context.Background(), *rounds, *seed, rules, *bet, side, *workers)
+	}
 	m := run.End(int64(st.Rounds))
 	ops := blackjack.Ops()
 
@@ -82,18 +93,19 @@ func main() {
 	case *quiet:
 		fmt.Printf("%.0f\n", m.OpsPerS)
 	case *asJSON:
-		emitJSON(st, m, ops, rules, side, *seed)
+		emitJSON(st, m, ops, rules, side, *seed, effectiveWorkers(*workers))
 	default:
-		emitText(st, m, ops, rules, side, *seed)
+		emitText(st, m, ops, rules, side, *seed, effectiveWorkers(*workers))
 	}
 }
 
 func emitText(st blackjack.Stats, m metrics.Report, ops blackjack.OpCounts,
-	rules blackjack.Rules, side blackjack.SideBets, seed int64) {
+	rules blackjack.Rules, side blackjack.SideBets, seed int64, workersUsed int) {
 
 	fmt.Println("=== Banc d'essai ===")
 	fmt.Printf("Runtime              : %s sur %s/%s\n", m.GoVersion, m.GOOS, m.GOARCH)
 	fmt.Printf("Coeurs logiques      : %d (GOMAXPROCS = %d)\n", m.NumCPU, m.GOMAXPROCS)
+	fmt.Printf("Workers              : %s\n", workersLabel(workersUsed, m.NumCPU))
 	fmt.Printf("Binaire              : %s\n", buildKind(ops))
 
 	fmt.Println()
@@ -197,6 +209,7 @@ type payload struct {
 		Penetration  float64 `json:"penetration"`
 		H17          bool    `json:"dealerHitsSoft17"`
 		SideBets     bool    `json:"sideBets"`
+		Workers      int     `json:"workers"`
 		Instrumented bool    `json:"instrumented"`
 	} `json:"config"`
 	Game struct {
@@ -221,7 +234,7 @@ type payload struct {
 }
 
 func emitJSON(st blackjack.Stats, m metrics.Report, ops blackjack.OpCounts,
-	rules blackjack.Rules, side blackjack.SideBets, seed int64) {
+	rules blackjack.Rules, side blackjack.SideBets, seed int64, workersUsed int) {
 
 	var p payload
 	p.Config.Rounds = st.Rounds
@@ -230,6 +243,7 @@ func emitJSON(st blackjack.Stats, m metrics.Report, ops blackjack.OpCounts,
 	p.Config.Penetration = rules.Penetration
 	p.Config.H17 = rules.DealerHitsSoft17
 	p.Config.SideBets = side.Any()
+	p.Config.Workers = workersUsed
 	p.Config.Instrumented = blackjack.Instrumented
 
 	p.Game.Rounds = st.Rounds
@@ -260,6 +274,14 @@ func emitJSON(st blackjack.Stats, m metrics.Report, ops blackjack.OpCounts,
 
 // --- mise en forme ---
 
+// workersLabel décrit le mode d'exécution choisi.
+func workersLabel(w, numCPU int) string {
+	if w == 1 {
+		return "1 (séquentiel, mode de référence)"
+	}
+	return fmt.Sprintf("%d sur %d coeurs logiques", w, numCPU)
+}
+
 func h17Label(h17 bool) string {
 	if h17 {
 		return "tire (H17)"
@@ -272,6 +294,14 @@ func buildKind(ops blackjack.OpCounts) string {
 		return "INSTRUMENTÉ (-tags instrument) — ne pas s'en servir pour mesurer un débit"
 	}
 	return "par défaut, non instrumenté"
+}
+
+// effectiveWorkers résout 0 en nombre de coeurs logiques.
+func effectiveWorkers(w int) int {
+	if w <= 0 {
+		return runtime.NumCPU()
+	}
+	return w
 }
 
 func pct(n, total int) float64 {
