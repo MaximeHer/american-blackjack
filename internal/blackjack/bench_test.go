@@ -121,11 +121,11 @@ func BenchmarkDeal(b *testing.B) {
 // appelée plusieurs fois par décision, ce qui en fait la plus chaude du
 // moteur.
 func BenchmarkHandTotal(b *testing.B) {
-	h := &Hand{Cards: []Card{
+	h := newHand(
 		newCard(rankAce, suitPique),
 		newCard(rank7, suitCoeur),
 		newCard(rank5, suitCarreau),
-	}}
+	)
 
 	var total int
 	var soft bool
@@ -147,17 +147,17 @@ func BenchmarkHandTotal(b *testing.B) {
 // le moteur n'emprunte plus.
 func BenchmarkDecide(b *testing.B) {
 	r := DefaultRules()
-	h := &Hand{Cards: []Card{
+	h := newHand(
 		newCard(rank10, suitPique),
 		newCard(rank6, suitCoeur),
-	}}
+	)
 	up := newCard(rank9, suitTrefle)
 
 	var d string
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		d = Decide(h, up, r, 1)
+		d = Decide(&h, up, r, 1)
 	}
 	sinkString = d
 }
@@ -216,8 +216,9 @@ func TestStructSizes(t *testing.T) {
 	rows := []row{
 		{"Card", unsafe.Sizeof(c), unsafe.Sizeof(c)},
 		{"Hand", unsafe.Sizeof(h),
-			unsafe.Sizeof(h.Doubled) + unsafe.Sizeof(h.Bet) + unsafe.Sizeof(h.FromSplit) +
-				unsafe.Sizeof(h.Cards) + unsafe.Sizeof(h.SplitAce) + unsafe.Sizeof(h.Stood) +
+			unsafe.Sizeof(h.Bet) + unsafe.Sizeof(h.cards) + unsafe.Sizeof(h.n) +
+				unsafe.Sizeof(h.Doubled) + unsafe.Sizeof(h.FromSplit) +
+				unsafe.Sizeof(h.SplitAce) + unsafe.Sizeof(h.Stood) +
 				unsafe.Sizeof(h.Surrendered)},
 		{"RoundResult", unsafe.Sizeof(rr),
 			unsafe.Sizeof(rr.PlayerBJ) + unsafe.Sizeof(rr.MainWagered) + unsafe.Sizeof(rr.DealerBJ) +

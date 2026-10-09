@@ -220,8 +220,12 @@ func consecutive(v []int) bool {
 // cartes du joueur totalisent 20. Le gain maximal combine une paire de Dames de
 // coeur et un blackjack du croupier.
 func EvalLuckyLadies(a, b Card, dealerBJ bool) SideOutcome {
-	h := &Hand{Cards: []Card{a, b}}
-	total, _ := h.Total()
+	// Total de deux cartes calculé directement : construire une Hand pour
+	// deux cartes coûterait 40 octets de pile pour rien.
+	total := a.Value() + b.Value()
+	if total > 21 && (a.IsAce() || b.IsAce()) {
+		total -= 10 // un As ramené de 11 à 1
+	}
 	if total != 20 {
 		return OutcomeLose
 	}

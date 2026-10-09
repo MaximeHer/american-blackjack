@@ -231,7 +231,7 @@ func decideBasic(h *Hand, up Card, r Rules, handCount int) string {
 	// Une paire se consulte d'abord dans sa propre table, et seulement si on
 	// peut encore ouvrir une main supplémentaire.
 	if h.IsPair() && handCount < r.MaxSplitHands {
-		if d := strategyFlat[kindPair][h.Cards[0].Value()][ui]; d != dNone {
+		if d := strategyFlat[kindPair][h.Card(0).Value()][ui]; d != dNone {
 			if d == dSplit {
 				if canSplit(h, r) {
 					return Split
@@ -280,10 +280,10 @@ func TakeInsurance(up Card) bool { return takeInsuranceBasic(up) }
 // règles : une paire d'As déjà issue d'un split ne se resépare que si la table
 // l'autorise.
 func canSplit(h *Hand, r Rules) bool {
-	if len(h.Cards) != 2 {
+	if h.Len() != 2 {
 		return false
 	}
-	if h.Cards[0].IsAce() && h.FromSplit && !r.ResplitAces {
+	if h.Card(0).IsAce() && h.FromSplit && !r.ResplitAces {
 		return false
 	}
 	return true
@@ -303,7 +303,7 @@ func degrade(d uint8, h *Hand, r Rules, total int, soft bool) string {
 		}
 		return Hit
 	case dSurrender:
-		if r.LateSurrender && len(h.Cards) == 2 && !h.FromSplit {
+		if r.LateSurrender && h.Len() == 2 && !h.FromSplit {
 			return Surrender
 		}
 		return Hit
@@ -313,7 +313,7 @@ func degrade(d uint8, h *Hand, r Rules, total int, soft bool) string {
 
 // canDouble vérifie qu'un double est autorisé sur cette main.
 func canDouble(h *Hand, r Rules) bool {
-	if len(h.Cards) != 2 {
+	if h.Len() != 2 {
 		return false
 	}
 	if h.FromSplit && !r.DoubleAfterSplit {

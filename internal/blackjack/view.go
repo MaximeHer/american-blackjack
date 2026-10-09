@@ -121,7 +121,7 @@ func (t *Table) View() TableView {
 	}
 	for i, ph := range t.hands {
 		v.Hands = append(v.Hands, HandView{
-			Cards:       cardViews(ph.h.Cards),
+			Cards:       cardViews(ph.h.Cards()),
 			Total:       totalOf(ph.h),
 			Soft:        softOf(ph.h),
 			Bet:         ph.h.Bet,
@@ -144,10 +144,10 @@ func (t *Table) View() TableView {
 // information que le joueur n'a pas le droit de connaître.
 func (t *Table) dealerView() DealerView {
 	if !t.revealed {
-		visible := &Hand{Cards: []Card{t.dealer.Cards[0]}}
+		visible := newHand(t.dealer.Card(0))
 		total, soft := visible.Total()
 		return DealerView{
-			Cards:  cardViews(visible.Cards),
+			Cards:  cardViews(visible.Cards()),
 			Hidden: true,
 			Total:  total,
 			Soft:   soft,
@@ -155,7 +155,7 @@ func (t *Table) dealerView() DealerView {
 	}
 	total, soft := t.dealer.Total()
 	return DealerView{
-		Cards:     cardViews(t.dealer.Cards),
+		Cards:     cardViews(t.dealer.Cards()),
 		Hidden:    false,
 		Total:     total,
 		Soft:      soft,

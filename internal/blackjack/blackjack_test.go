@@ -34,7 +34,7 @@ func TestHandTotal(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := &Hand{Cards: tc.cards}
+			h := newHand(tc.cards...)
 			total, soft := h.Total()
 			if total != tc.total || soft != tc.soft {
 				t.Fatalf("Total() = (%d, %v), attendu (%d, %v)", total, soft, tc.total, tc.soft)
@@ -44,14 +44,15 @@ func TestHandTotal(t *testing.T) {
 }
 
 func TestBlackjackNotAfterSplit(t *testing.T) {
-	h := &Hand{Cards: []Card{c("A", "Pique"), c("K", "Coeur")}, FromSplit: true}
+	h := newHand(c("A", "Pique"), c("K", "Coeur"))
+	h.FromSplit = true
 	if h.IsBlackjack() {
 		t.Fatal("un 21 issu d'un split ne doit pas être un blackjack")
 	}
 }
 
 func TestIsPairAcrossTenValues(t *testing.T) {
-	h := &Hand{Cards: []Card{c("K", "Pique"), c("Q", "Coeur")}}
+	h := newHand(c("K", "Pique"), c("Q", "Coeur"))
 	if !h.IsPair() {
 		t.Fatal("Roi et Dame valent tous deux 10 et forment une paire séparable")
 	}
@@ -276,8 +277,8 @@ func TestDealerBustRateInconditionnel(t *testing.T) {
 		if s.CutReached() {
 			s.Shuffle()
 		}
-		d := &Hand{Cards: []Card{s.Deal(), s.Deal()}}
-		playDealer(d, s, r, nil)
+		d := newHand(s.Deal(), s.Deal())
+		playDealer(&d, s, r, nil)
 		if d.IsBust() {
 			bust++
 		}

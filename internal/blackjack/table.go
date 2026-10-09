@@ -123,8 +123,11 @@ func (t *Table) Deal(bet float64, side SideBets) error {
 	p2 := t.shoe.Deal()
 	hole := t.shoe.Deal()
 
-	t.dealer = &Hand{Cards: []Card{up, hole}}
-	t.hands = []*playHand{{h: &Hand{Cards: []Card{p1, p2}, Bet: bet}}}
+	d := newHand(up, hole)
+	t.dealer = &d
+	first := newHand(p1, p2)
+	first.Bet = bet
+	t.hands = []*playHand{{h: &first}}
 
 	// Paris annexes jugés sur la seule distribution initiale. Lucky Ladies
 	// attend le contrôle de la carte cachée, dont dépend son gain maximal.
@@ -171,7 +174,7 @@ func (t *Table) Act(action string) error {
 // peek fait contrôler la carte cachée au croupier quand sa carte visible le
 // justifie, puis engage la phase de jeu ou règle immédiatement le coup.
 func (t *Table) peek() {
-	up := t.dealer.Cards[0]
+	up := t.dealer.Card(0)
 	playerBJ := t.hands[0].h.IsBlackjack()
 
 	if up.IsAce() || up.IsTenValue() {
@@ -260,17 +263,16 @@ func (t *Table) playerAct(action string) error {
 		ph.done = true
 
 	case ActionSplit:
-		second := ph.h.Cards[1]
+		second := ph.h.Card(1)
 		t.Bankroll -= t.bet
-		nh := &playHand{h: &Hand{
-			Cards:     []Card{second},
-			Bet:       t.bet,
-			FromSplit: true,
-			SplitAce:  second.IsAce(),
-		}}
-		ph.h.Cards = []Card{ph.h.Cards[0]}
+		split := newHand(second)
+		split.Bet = t.bet
+		split.FromSplit = true
+		split.SplitAce = second.IsAce()
+		nh := &playHand{h: &split}
+		ph.h.keepFirst()
 		ph.h.FromSplit = true
-		ph.h.SplitAce = ph.h.Cards[0].IsAce()
+		ph.h.SplitAce = ph.h.Card(0).IsAce()
 		ph.h.Add(t.shoe.Deal())
 		nh.h.Add(t.shoe.Deal())
 
@@ -295,7 +297,7 @@ func (t *Table) autoAdvance() {
 			break
 		}
 		// Un As séparé ne reçoit qu'une carte, sauf règle contraire.
-		if ph.h.SplitAce && !t.rules.HitSplitAces && len(ph.h.Cards) >= 2 {
+		if ph.h.SplitAce && !t.rules.HitSplitAces && ph.h.Len() >= 2 {
 			ph.done = true
 		}
 		// Un 21 n'a plus rien à gagner à tirer.
@@ -375,7 +377,7 @@ func (t *Table) resolveLuckyLadies(dealerBJ bool) {
 	if t.side.LuckyLadies <= 0 {
 		return
 	}
-	cards := t.hands[0].h.Cards
+	cards := t.hands[0].h.Cards()
 	t.addSide("Lucky Ladies", t.side.LuckyLadies, EvalLuckyLadies(cards[0], cards[1], dealerBJ))
 }
 
@@ -383,7 +385,7 @@ func (t *Table) resolveBuster() {
 	if t.side.Buster <= 0 {
 		return
 	}
-	t.addSide("Buster Blackjack", t.side.Buster, EvalBuster(len(t.dealer.Cards), t.dealer.IsBust()))
+	t.addSide("Buster Blackjack", t.side.Buster, EvalBuster(t.dealer.Len(), t.dealer.IsBust()))
 }
 
 func (t *Table) resolveBusterNoDraw() {
@@ -434,7 +436,7 @@ func (t *Table) LegalActions() []string {
 
 	actions := []string{ActionHit, ActionStand}
 
-	if len(ph.h.Cards) == 2 {
+	if ph.h.Len() == 2 {
 		if canDouble(ph.h, t.rules) && t.Bankroll >= ph.h.Bet {
 			actions = append(actions, ActionDouble)
 		}
@@ -460,7 +462,7 @@ func (t *Table) Hint() string {
 	if ph == nil {
 		return ""
 	}
-	switch Decide(ph.h, t.dealer.Cards[0], t.rules, len(t.hands)) {
+	switch Decide(ph.h, t.dealer.Card(0), t.rules, len(t.hands)) {
 	case Hit:
 		return ActionHit
 	case Stand:

@@ -54,8 +54,18 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 	p2 := s.Deal()
 	hole := s.Deal()
 
-	dealer := &Hand{Cards: []Card{up, hole}}
-	hands := []*Hand{{Cards: []Card{p1, p2}, Bet: bet}}
+	// Mains en variables LOCALES, donc sur la pile. Un tableau de 4 mains
+	// occupe 160 octets que le compilateur met à zéro d'un seul memclr, là où
+	// la version précédente faisait quatre allocations sur le tas par coup.
+	var hands [maxHands]Hand
+	var dealer Hand
+	nHands := 1
+
+	dealer.Add(up)
+	dealer.Add(hole)
+	hands[0].Bet = bet
+	hands[0].Add(p1)
+	hands[0].Add(p2)
 
 	if tr != nil {
 		tr.add("Mise de %.2f sur la case principale.", bet)
@@ -132,8 +142,8 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 		}
 		if sb.Buster > 0 {
 			// Le croupier complète sa main pour que le Buster soit jugeable.
-			playDealer(dealer, s, r, tr)
-			res.SideNet += netSide(sb.Buster, EvalBuster(len(dealer.Cards), dealer.IsBust()))
+			playDealer(&dealer, s, r, tr)
+			res.SideNet += netSide(sb.Buster, EvalBuster(dealer.Len(), dealer.IsBust()))
 			res.DealerPlayed = true
 			res.DealerBust = dealer.IsBust()
 		}
@@ -143,19 +153,19 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 	// --- Décisions du joueur ---
 	// La boucle parcourt un slice qui grandit : chaque split y ajoute une
 	// main, qui sera jouée à son tour.
-	for i := 0; i < len(hands); i++ {
-		h := hands[i]
+	for i := 0; i < nHands; i++ {
+		h := &hands[i]
 		for {
 			if h.Surrendered || h.Stood || h.IsBust() {
 				break
 			}
 			// Un As séparé ne reçoit qu'une seule carte, sauf règle contraire.
-			if h.SplitAce && !r.HitSplitAces && len(h.Cards) >= 2 {
+			if h.SplitAce && !r.HitSplitAces && h.Len() >= 2 {
 				h.Stood = true
 				break
 			}
 
-			action := decideBasic(h, up, r, len(hands))
+			action := decideBasic(h, up, r, nHands)
 			if tr != nil {
 				tr.add("Main %d (%s) : %s.", i+1, h.Describe(), actionLabel(action))
 			}
@@ -178,34 +188,44 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 				h.Surrendered = true
 
 			case Split:
-				// La seconde carte part fonder une nouvelle main, puis chaque
-				// moitié reçoit une carte.
-				second := h.Cards[1]
-				nh := &Hand{
-					Cards:     []Card{second},
-					Bet:       bet,
-					FromSplit: true,
-					SplitAce:  second.IsAce(),
+				// La seconde carte part fonder une nouvelle main dans
+				// l'emplacement libre suivant du tableau. Aucune allocation :
+				// les quatre emplacements existent déjà sur la pile.
+				//
+				// Le garde-fou nHands < maxHands double celui de la stratégie :
+				// une Rules mal configurée ne doit pas pouvoir déborder du
+				// tableau.
+				if nHands >= maxHands {
+					h.Stood = true
+					break
 				}
-				h.Cards = []Card{h.Cards[0]}
+				second := h.Card(1)
+
+				h.keepFirst()
 				h.FromSplit = true
-				h.SplitAce = h.Cards[0].IsAce()
+				h.SplitAce = h.Card(0).IsAce()
 				h.Add(s.Deal())
+
+				nh := &hands[nHands]
+				nh.Bet = bet
+				nh.FromSplit = true
+				nh.SplitAce = second.IsAce()
+				nh.Add(second)
 				nh.Add(s.Deal())
-				hands = append(hands, nh)
+				nHands++
 				res.Action += bet
 			}
 		}
 	}
-	res.Hands = len(hands)
+	res.Hands = nHands
 
 	// --- Main du croupier ---
 	// Le croupier ne tire que s'il reste une main à battre. Il complète
 	// néanmoins sa main quand un pari Buster est en jeu, puisque celui-ci
 	// porte précisément sur son dépassement.
 	live := false
-	for _, h := range hands {
-		if !h.Surrendered && !h.IsBust() {
+	for i := 0; i < nHands; i++ {
+		if h := &hands[i]; !h.Surrendered && !h.IsBust() {
 			live = true
 			break
 		}
@@ -214,7 +234,7 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 		if tr != nil {
 			tr.add("Le croupier retourne %s.", hole.Label())
 		}
-		playDealer(dealer, s, r, tr)
+		playDealer(&dealer, s, r, tr)
 		res.DealerPlayed = true
 	}
 
@@ -223,7 +243,8 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 	res.DealerBust = dealerBust
 
 	// --- Règlements ---
-	for _, h := range hands {
+	for i := 0; i < nHands; i++ {
+		h := &hands[i]
 		switch {
 		case h.Surrendered:
 			res.MainNet -= h.Bet / 2
@@ -244,7 +265,7 @@ func PlayRound(s *Shoe, r Rules, bet float64, sb SideBets, tr *Trace) RoundResul
 
 	// --- Pari Buster ---
 	if sb.Buster > 0 {
-		o := EvalBuster(len(dealer.Cards), dealerBust)
+		o := EvalBuster(dealer.Len(), dealerBust)
 		res.SideNet += netSide(sb.Buster, o)
 		if tr != nil {
 			tr.add("Buster Blackjack : %s.", o.Label())
