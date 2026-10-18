@@ -37,3 +37,11 @@ coverage.html
 # Environnements
 .env
 .DS_Store
+
+# Artefacts de compilation LaTeX — seuls le .tex et le .pdf sont versionnés.
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.synctex.gz
+*.toc

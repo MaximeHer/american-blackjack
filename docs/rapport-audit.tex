@@ -1,0 +1,492 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage[a4paper,top=13mm,bottom=13mm,left=14mm,right=14mm]{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{pgfplots}
+\usepackage{lastpage}
+\usepackage{hyperref}
+\pgfplotsset{compat=1.18}
+
+\definecolor{accent}{RGB}{28,78,176}
+\definecolor{accentlight}{RGB}{238,243,252}
+\definecolor{ink}{RGB}{26,32,44}
+\definecolor{muted}{RGB}{108,118,133}
+\definecolor{rulegray}{RGB}{214,220,228}
+\definecolor{good}{RGB}{21,115,75}
+\definecolor{bad}{RGB}{176,42,42}
+
+\hypersetup{colorlinks=true,urlcolor=accent,linkcolor=accent}
+
+\titleformat{\section}{\color{accent}\normalfont\normalsize\bfseries}{}{0pt}{}
+\titlespacing*{\section}{0pt}{7pt}{2pt}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2.5pt}
+\renewcommand{\arraystretch}{1.1}
+\setlist[itemize]{leftmargin=11pt,itemsep=0pt,topsep=1pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\footrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height \footrulewidth\hfill}}
+\fancyfoot[L]{\footnotesize\color{muted}American Blackjack — Audit de performance}
+\fancyfoot[R]{\footnotesize\color{muted}\thepage\,/\,\pageref{LastPage}}
+
+\newcommand{\partbanner}[2]{%
+  \vspace{2pt}
+  \noindent\colorbox{accent}{\color{white}\footnotesize\bfseries\ #1\ }%
+  \hspace{6pt}{\color{ink}\bfseries\large #2}\\[-3pt]
+  {\color{rulegray}\rule{\textwidth}{0.9pt}}\vspace{-1pt}
+}
+
+\newsavebox{\keyboxbuf}
+\newenvironment{keybox}
+  {\begin{lrbox}{\keyboxbuf}%
+   \begin{minipage}{\dimexpr\textwidth-16pt}\small\color{ink}\setlength{\parskip}{3pt}}
+  {\end{minipage}\end{lrbox}%
+   \setlength{\fboxsep}{8pt}\noindent\colorbox{accentlight}{\usebox{\keyboxbuf}}}
+
+\newcommand{\gain}[1]{{\color{good}\bfseries #1}}
+\newcommand{\loss}[1]{{\color{bad}\bfseries #1}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\begin{document}
+
+% ======================================================= PAGE DE GARDE
+\thispagestyle{empty}
+
+{\footnotesize\color{accent}\bfseries SUP DE VINCI \ $\bullet$\ RNCP BLOC 4 — OPTIMISATIONS \& PERFORMANCES BACKEND
+\hfill SESSION E42}\\[-4pt]
+{\color{accent}\rule{\textwidth}{1.2pt}}
+
+\vspace{56mm}
+
+{\footnotesize\color{accent}\bfseries RAPPORT D'AUDIT DE PERFORMANCE}
+
+\vspace{2mm}
+{\color{ink}\fontsize{36}{40}\selectfont\bfseries American Blackjack}
+
+\vspace{1.5mm}
+{\color{ink}\large Moteur de simulation de table à haut débit en Go}
+
+\vspace{3mm}
+{\color{accent}\rule{32mm}{2pt}}
+
+\vspace{9mm}
+
+\begin{keybox}
+{\color{accent}\bfseries\footnotesize PÉRIMÈTRE FONCTIONNEL}
+
+Moteur de simulation d'une table de blackjack américain : carte cachée avec contrôle du
+croupier, sabot de 4 jeux et carte de coupe, doubler, séparer jusqu'à quatre mains,
+abandon tardif, assurance, et les quatre paris annexes du casino. Le moteur ne sert pas
+à jouer un coup, mais à en dérouler des dizaines de millions pour mesurer l'avantage de
+la maison sur un jeu de règles donné. La métrique de pilotage est le \textbf{débit}, en
+coups par seconde.
+
+\textbf{La performance est ici un besoin, pas un confort.} L'écart-type du résultat par
+coup vaut 1,14 unité de mise, soit plus de trois fois l'avantage à mesurer
+($\approx 0{,}35$ \%). L'erreur-type décroissant en $1/\sqrt{n}$, le résoudre à 0,01
+point près exige $\approx 1{,}3\times10^{8}$ coups — soit 48 minutes par exécution sur
+la version initiale. \textbf{Le débit conditionne la précision statistique atteignable.}
+
+Le document couvre la métrologie et les résultats chiffrés, puis le diagnostic matériel
+et les choix d'ingénierie retenus, y compris une optimisation rejetée après mesure.
+\end{keybox}
+
+\vfill
+
+\begin{center}
+{\color{accent}\bfseries\footnotesize DÉPÔT \& CADRE}\\[2pt]
+{\small\url{https://github.com/MaximeHer/american-blackjack}}\\[1pt]
+{\footnotesize\color{muted}Tag de référence \code{v0-baseline} $\bullet$ branche d'échec \code{echec/memoisation-total}}\\[5pt]
+{\footnotesize Maxime H. $\bullet$ Master 2 Expert en Développement Logiciel — M2 Dev B $\bullet$ Octobre 2026}
+\end{center}
+
+\clearpage
+
+% ======================================================= PARTIE I
+\partbanner{PARTIE I}{Métrologie, protocole \& résultats}
+
+\section{1.1\quad Banc d'essai et conditions de mesure}
+
+\begin{tabularx}{\textwidth}{@{}>{\bfseries\small}p{26mm} >{\small}p{60mm} >{\small\leavevmode\color{muted}}X@{}}
+\toprule
+\textbf{\small Composant} & \textbf{\small Spécification} & \textbf{\small Implication}\\
+\midrule
+Processeur & AMD Ryzen 5 5600H — 6 cœurs / 12 threads @ 3,30 GHz (Zen 3) & Processeur \emph{mobile} : fréquence dépendante de l'alimentation et de la charge\\
+Caches & L1 384 Ko (64 Ko/cœur) $\bullet$ L2 3072 Ko (512 Ko/cœur) $\bullet$ L3 16 Mo partagé $\bullet$ ligne 64 o & Un sabot compacté (208 o) tient intégralement en L1\\
+Mémoire & 16 Go DDR4-3200, \textbf{une seule barrette} & \textbf{Simple canal} : bande passante divisée par deux, plafonne le passage à l'échelle\\
+Système & Windows 11 build 26200 $\bullet$ Go 1.26.4 \code{windows/amd64} $\bullet$ GOMAXPROCS = 12 & Compilateur \code{gc}, escape analysis et inlining actifs\\
+Protocole & \code{hyperfine -{}-shell=none -{}-warmup 3 -{}-runs 15} $\bullet$ \code{benchstat -benchtime 2s -count 8} & Médiane, écart-type et $p$-value sur chaque comparaison\\
+\bottomrule
+\end{tabularx}
+
+\vspace{3pt}
+\textbf{Conditions d'exécution.} Toutes les mesures retenues ont été prises sur une
+machine \textbf{branchée sur secteur}, \textbf{redémarrée juste avant la campagne} et
+\textbf{sans aucune application tierce lancée} — navigateur, éditeur et messagerie
+fermés, charge CPU vérifiée sous 5 \% avant chaque relevé. Le harnais refuse d'ailleurs
+de démarrer sur batterie et avertit au-delà de ce seuil.
+
+\textbf{Deux biais ont faussé les premiers relevés} (détaillés en 3.3) : une campagne sur
+machine chargée, et des benchmarks sans puits d'accumulation, dont le compilateur
+supprimait une partie du calcul mesuré. La baseline a donc été \textbf{remesurée depuis
+son tag Git}, pour que les deux bornes de comparaison partagent la même méthodologie.
+
+\section{1.2\quad Paliers d'optimisation et effets mesurés}
+
+Neuf paliers, chacun isolé dans son commit, mesuré par \code{benchstat} contre l'état
+précédent et validé par l'oracle avant d'être conservé.
+
+\vspace{2pt}
+\begin{tabularx}{\textwidth}{@{}>{\small}c >{\small}p{46mm} >{\small\leavevmode\color{muted}}X >{\small}r@{}}
+\toprule
+\textbf{\small \#} & \textbf{\small Palier} & \textbf{\small Cible attaquée} & \textbf{\small Effet}\\
+\midrule
+V1 & Journal narratif rendu explicite & $\approx$ 10 \code{fmt.Sprintf} par coup, produits même en simulation & \gain{$-47$ \%}\\
+V2 & Paris annexes en énumération entière & \code{map[string]float64} sur le chemin chaud & \loss{$\approx 0$ \%}\\
+V3 & Stratégie dévirtualisée & Appel dynamique par interface & \gain{$-11$ \%}\\
+V4 & Mélange de Fisher-Yates en place & $O(n^2)$ : 10 756 déplacements par rebattage & \gain{$-42$ \%}\\
+V5 & \textbf{Carte compactée sur 1 octet} & \code{Card} de 32 o par pointeur $+$ \code{map[string]} & \gain{$-57$ \%}\\
+V6 & Réordonnancement des champs & 19 o et 28 o de remplissage & \gain{$-6$ \%}\\
+V7 & \textbf{Table de stratégie plate} & \code{Sprintf} $+$ hachage : 35 \% du temps total & \gain{$-50$ \%}\\
+V8 & \textbf{Mains en tableaux fixes (pile)} & 4 dernières allocations par coup & \gain{$-36$ \%}\\
+V9 & \textbf{Worker pool borné} & 1 cœur utilisé sur 12 & \gain{$\times 4{,}75$}\\
+\bottomrule
+\end{tabularx}
+
+\vspace{2pt}
+\textbf{V2 est conservé bien qu'improductif}, et illustre la loi du maillon faible : le
+gain local était réel ($-11{,}6$ \% sur l'évaluation des paris annexes) mais ceux-ci ne
+pesaient que 4,4 \% du coût d'un coup. Gagner 11,6 \% de 4,4 \% donne 0,5 \%, sous le
+bruit de mesure.
+
+\section{1.3\quad Représentation graphique}
+
+\vspace{-2pt}
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.46\textwidth, height=3.7cm, ybar, bar width=20pt,
+  ymin=0, ymax=42, ylabel={\scriptsize M coups/s},
+  symbolic x coords={Baseline,Séquentiel,Parallèle}, xtick=data,
+  xticklabel style={font=\scriptsize}, yticklabel style={font=\scriptsize},
+  ylabel style={font=\scriptsize},
+  nodes near coords, nodes near coords style={font=\scriptsize\bfseries,color=ink},
+  every axis plot/.append style={fill=accent,draw=accent!70!black},
+  axis lines*=left, axis line style={color=rulegray},
+  ymajorgrids, grid style={color=rulegray,dashed},
+  title style={font=\scriptsize\bfseries\color{accent}}, title={Débit du moteur},
+]
+\addplot coordinates {(Baseline,0.34) (Séquentiel,6.03) (Parallèle,34.49)};
+\end{axis}
+\end{tikzpicture}
+\hfill
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.46\textwidth, height=3.7cm,
+  xlabel={\scriptsize Workers}, ylabel={\scriptsize Accélération},
+  xmin=0, xmax=13, ymin=0, ymax=13, xtick={1,2,4,6,8,12},
+  xticklabel style={font=\scriptsize}, yticklabel style={font=\scriptsize},
+  xlabel style={font=\scriptsize}, ylabel style={font=\scriptsize},
+  axis lines*=left, axis line style={color=rulegray},
+  ymajorgrids, grid style={color=rulegray,dashed},
+  legend style={font=\scriptsize,draw=none,fill=none,at={(0.02,0.98)},anchor=north west},
+  title style={font=\scriptsize\bfseries\color{accent}}, title={Passage à l'échelle},
+]
+\addplot[dashed,color=muted,thick] coordinates {(1,1)(12,12)};
+\addlegendentry{linéaire théorique}
+\addplot[color=accent,thick,mark=*,mark size=1.5pt] coordinates
+  {(1,1.00)(2,1.52)(4,2.58)(6,3.54)(8,4.24)(12,4.75)};
+\addlegendentry{mesuré}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\vspace{-6pt}
+{\footnotesize\color{muted}\textbf{Figure 1} — Débit comparé, et accélération multi-cœurs
+mesurée contre accélération linéaire théorique.}
+
+\vspace{3pt}
+\textbf{Le passage à l'échelle est sous-linéaire, pour deux raisons matérielles.} Jusqu'à
+six workers, les cœurs physiques se partagent la bande passante mémoire — une seule
+barrette, donc un seul canal. Au-delà, ils se partagent les unités de calcul d'un même
+cœur physique : l'hyperthreading masque des latences mais ne double pas le silicium, et
+n'apporte que $\times 1{,}34$ supplémentaire.
+
+
+\section{1.4\quad Validation statistique par benchstat}
+
+Comparaison du tag \code{v0-baseline} à la version finale, \textbf{même protocole et même
+méthodologie de puits des deux côtés}. Toutes les lignes ressortent à $p = 0{,}000$
+($n = 8$).
+
+\vspace{2pt}
+\begin{tabularx}{\textwidth}{@{}>{\small\ttfamily}l >{\small}r >{\small}r >{\small}r >{\small}r >{\small}r@{}}
+\toprule
+\textbf{\small Benchmark} & \textbf{\small Baseline} & \textbf{\small Finale} & \textbf{\small Gain} & \textbf{\small Allocs V0} & \textbf{\small Allocs V9}\\
+\midrule
+PlayRound        & 3 731 ns  & \textbf{164,5 ns} & \gain{$-95{,}6$ \%} & 46 & \gain{0}\\
+PlayRoundSideBets& 4 563 ns  & 238,8 ns & \gain{$-94{,}8$ \%} & 57 & \gain{0}\\
+Decide           & 217,8 ns  & \textbf{9,13 ns} & \gain{$-95{,}8$ \%} & 3 & \gain{0}\\
+Shuffle          & 21 227 ns & 1 748 ns & \gain{$-91{,}8$ \%} & 220 & 1\\
+Deal             & 97,6 ns   & 11,0 ns  & \gain{$-88{,}7$ \%} & 1 & \gain{0}\\
+HandTotal        & 31,3 ns   & 3,23 ns  & \gain{$-89{,}7$ \%} & 0 & 0\\
+SideBetEval      & 87,3 ns   & 25,6 ns  & \gain{$-70{,}7$ \%} & 0 & 0\\
+Simulate (10\textsuperscript{4}) & 34,05 ms & 1,754 ms & \gain{$-94{,}9$ \%} & 469 800 & \gain{344}\\
+\midrule
+\textbf{geomean} & \textbf{2 274 ns} & \textbf{177,9 ns} & \gain{\textbf{$-92{,}2$ \%}} & & \\
+\bottomrule
+\end{tabularx}
+
+\vspace{3pt}
+\textbf{Reproductibilité en une commande} — \code{bash scripts/run\_benchmarks.sh} produit
+un dossier horodaté : relevé matériel, oracle, benchmarks comparés au tag, mesure
+\code{hyperfine}, profils annotés et résumé citant la révision Git mesurée.
+
+\textbf{Garde-fou de correction.} L'avantage de la maison est une grandeur publiée
+($\approx 0{,}35$ \%) que le moteur doit reproduire. L'oracle borne l'écart à quatre
+erreurs-types calculées depuis la variance observée, et non à une marge arbitraire : il
+est resté dans la borne sur les neuf paliers, mesuré à $+0{,}4144$ \% soit
+\textbf{0,80 erreur-type}. Une validation croisée confronte deux implémentations
+distinctes du règlement, qui concordent à \textbf{0,0048 point}.
+
+% ======================================================= PARTIE II
+\vspace{6pt}
+\partbanner{PARTIE II}{Diagnostic matériel \& choix d'ingénierie}
+
+\section{2.1\quad Identification du chemin chaud}
+
+Profilage CPU et allocations par \code{go tool pprof} : 7,52 s d'échantillons dont 5,48 s
+dans la boucle de simulation. Trois mécanismes limitants ressortent, et \textbf{aucun
+n'est propre au métier du blackjack} — tous découlent de choix de représentation.
+
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.44\textwidth}
+\begin{tabularx}{\textwidth}{@{}>{\small}X >{\small}r@{}}
+\toprule
+\textbf{\small Mécanisme} & \textbf{\small Part CPU}\\
+\midrule
+Hachage de chaînes (\code{mapaccess}) & 27 \%\\
+\code{mallocgc} $+$ \code{bgsweep} & $\approx$ 40 \%\\
+\code{memmove} / \code{memclr} & —\\
+\bottomrule
+\end{tabularx}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.54\textwidth}
+\begin{tabularx}{\textwidth}{@{}>{\small\ttfamily}X >{\small}r >{\small}r@{}}
+\toprule
+\textbf{\small Ligne la plus coûteuse} & \textbf{\small Coût} & \textbf{\small \%}\\
+\midrule
+cardValues[c.Rank] & 1,57 s & 20,9\\
+strategyTable[Sprintf(..)] & 920 ms & 12,2\\
+append(pool, \&Card\{..\}) & 640 ms & 8,5\\
+append(pool[:i], pool[i+1:]) & 540 ms & 7,2\\
+\bottomrule
+\end{tabularx}
+\end{minipage}
+
+\vspace{4pt}
+\textbf{Quatre lignes de code concentrent 49 \% du temps d'exécution.}
+
+\vspace{3pt}
+\begin{keybox}
+\textbf{Un reprofilage a invalidé la moitié du plan initial.} Les trois premiers paliers
+avaient été ordonnés \emph{avant} tout profilage. Le profil a montré que le rebattage du
+sabot, placé en septième position, représentait en réalité \textbf{32 \% du CPU et 73 \%
+des octets alloués}, tandis que V2 visait une fonction absente du top 16. Un second
+profil, pris après la compaction des cartes, a de nouveau tout réordonné : le rebattage
+était tombé à \textbf{0,6 \%} des allocations et deux paliers planifiés étaient devenus
+sans objet. \textbf{Chaque optimisation ne réduit pas seulement un coût : elle
+redistribue la rentabilité de toutes les suivantes.}
+\end{keybox}
+
+
+\section{2.2\quad Choix d'ingénierie}
+
+\textbf{Axe 1 — Mémoire et localité de cache.} Une carte est encodée sur \textbf{un seul
+octet} (4 bits de rang, 2 bits d'enseigne) et stockée par valeur, contre deux chaînes
+manipulées par pointeur auparavant. Un sabot de 4 jeux passe de \textbf{6 656 octets sur
+104 lignes de cache plus 208 objets dispersés} à \textbf{208 octets contigus sur 4
+lignes}, résidents en L1 ; le parcours devient séquentiel, motif que le préchargeur
+matériel anticipe. Les structures ont été réordonnées par taille décroissante
+(\code{Hand} 56 $\rightarrow$ 40 o, \code{RoundResult} 80 $\rightarrow$ 56 o) et les
+mains placées en \textbf{tableaux fixes sur la pile} — une main n'excédant pas 21 cartes
+et les séparations étant bornées à quatre, tout est connu à la compilation. Résultat :
+\textbf{0 allocation par coup}, vérifié par \code{go build -gcflags='-m'}.
+
+\textbf{Axe 2 — Concurrence et scalabilité CPU.} Worker pool borné à
+\code{runtime.NumCPU()}, jamais une goroutine par tâche : un coup dure 178 ns, là où la
+création et l'ordonnancement d'une goroutine se comptent en centaines de nanosecondes.
+La charge étant strictement CPU-bound, le dimensionnement correct est le nombre de cœurs,
+pas un multiple. Chaque worker accumule dans une \textbf{variable locale, sur sa propre
+pile}, et ne touche à la mémoire partagée qu'une fois, à la fin : deux compteurs voisins
+dans un tableau partagé tomberaient sur la même ligne de cache de 64 octets, et chaque
+écriture de l'un invaliderait la ligne dans le cache de l'autre — le \textbf{faux
+partage}, qui annule le gain de parallélisme sans qu'aucun verrou ne soit en cause.
+
+\textbf{Le déterminisme survit au parallélisme}, condition de validité du protocole :
+chaque worker reçoit une graine \emph{dérivée} par mélange de bits (un simple
+\code{seed + w} corrélerait les séquences voisines) et la fusion se fait dans l'ordre des
+indices, jamais d'arrivée, l'addition flottante n'étant pas associative.
+
+\textbf{Axe 3 — I/O réseau et persistance : non traité.} L'interface diffuse ses métriques
+en Server-Sent Events JSON, sans persistance. Flux binaire compact et indexation en base
+sont la suite identifiée : signaler la lacune valait mieux que la combler superficiellement.
+
+\section{2.3\quad Confrontation critique : une optimisation rejetée}
+
+\textbf{Hypothèse.} Le binaire instrumenté mesure \textbf{10,38 appels à
+\code{Hand.Total()} par coup}, dont beaucoup sur la même main inchangée — stratégie, test
+de dépassement et comparaison finale l'interrogent tour à tour. Mettre le résultat en
+cache devait supprimer l'essentiel de ce travail.
+
+\vspace{2pt}
+\begin{tabularx}{\textwidth}{@{}>{\small}X >{\small}r >{\small}r >{\small}r@{}}
+\toprule
+\textbf{\small Mesure} & \textbf{\small Sans cache} & \textbf{\small Avec cache} & \textbf{\small Écart}\\
+\midrule
+\code{HandTotal} & 3,69 ns & 27,65 ns & \loss{$\times 7{,}5$}\\
+\code{PlayRound} & 255,9 ns & 926,3 ns & \loss{$+261{,}9$ \%}\\
+Débit & 4 210 560 /s & 1 151 994 /s & \loss{$-72{,}6$ \%}\\
+Objets vivants sur le tas & 22 097 & 387 523 & \loss{$\times 17{,}5$}\\
+Part CPU du ramasse-miettes & 4,29 \% & 11,31 \% & \loss{$\times 2{,}6$}\\
+\bottomrule
+\end{tabularx}
+
+\vspace{3pt}
+\textbf{Cause physique, en deux temps.} Consulter la map exige de construire une clé, de
+la hacher, de sonder le seau puis de comparer la clé complète : 27,65 ns contre 3,69 ns
+pour le calcul évité — \textbf{le cache coûte 7,5 fois plus cher que ce qu'il remplace}.
+Ensuite, la clé étant la suite ordonnée des cartes, l'espace des clés est immense et rien
+n'est purgé : le ramasse-miettes trace 387 000 objets vivants de plus par cycle.
+
+\textbf{L'enseignement est contre-intuitif :} c'est \emph{notre propre optimisation
+précédente} qui a rendu celle-ci perdante. Sur la version de référence, où \code{Total}
+coûtait 31,27 ns, un cache à 27,65 ns aurait été un gain ; la compaction des cartes l'a
+fait tomber à 3,69 ns, et la même idée est passée de bénéfique à catastrophique. L'échec
+était de plus \textbf{indétectable autrement que par la mesure} : la correction restait
+préservée et tous les tests passaient. Branche \code{echec/memoisation-total} conservée,
+non fusionnée.
+
+
+% ======================================================= BILAN
+\partbanner{BILAN}{Synthèse comparative et arbitrages}
+
+\section{3.1\quad Baseline contre version finale}
+
+\begin{tabularx}{\textwidth}{@{}>{\small}X >{\small}r >{\small}r >{\small}r@{}}
+\toprule
+\textbf{\small Indicateur} & \textbf{\small Baseline (V0)} & \textbf{\small Finale (V9)} & \textbf{\small Gain}\\
+\midrule
+Débit séquentiel & 342 306 coups/s & 6 026 483 coups/s & \gain{$\times 17{,}6$}\\
+Débit parallèle (12 workers) & — & \textbf{34 485 553 coups/s} & \gain{$\times 100{,}7$}\\
+Temps par coup & 2 921 ns & \textbf{31 ns} & \gain{$-98{,}9$ \%}\\
+Coût d'un coup (\code{PlayRound}) & 3 731 ns & 164,5 ns & \gain{$-95{,}6$ \%}\\
+Allocations par coup & 46 & \textbf{0,03} & \gain{$-99{,}9$ \%}\\
+Octets par coup & 1 657 o & 150 o & \gain{$-91{,}0$ \%}\\
+Cycles de GC (2 M coups) & 244 & 4 & \gain{$-98{,}4$ \%}\\
+Part CPU du ramasse-miettes & 15,25 \% & \textbf{0,00 \%} & \gain{éliminée}\\
+Parallélisme effectif (séquentiel) & 1,32 cœur & 1,01 cœur & \gain{GC hors des cœurs}\\
+Taille d'une carte & 32 o & \textbf{1 o} & \gain{$\times 32$}\\
+Durée de la suite de tests & 17,5 s & 1,6 s & \gain{$-90{,}9$ \%}\\
+\bottomrule
+\end{tabularx}
+
+\section{3.2\quad Sur quoi l'effort a porté}
+
+\textbf{L'accent a porté sur la mémoire avant le CPU}, délibérément : le profil initial
+montrait un moteur limité non par la logique du blackjack mais par trois mécanismes du
+runtime — hachage de chaînes, allocation sur le tas, déplacements de mémoire. Aucune des
+quatre lignes les plus coûteuses n'exprimait une règle du jeu.
+
+\textbf{La parallélisation n'est intervenue qu'en dernier, volontairement} : paralléliser
+un code qui alloue multiplie la pression sur le ramasse-miettes par le nombre de cœurs.
+Le parallélisme effectif à 1,01 cœur en séquentiel prouve que celui-ci ne mobilisait plus
+aucun autre cœur avant l'arrivée des workers.
+
+\textbf{Le palier le plus rentable est la compaction de la carte sur un octet (V5).} Il a
+amélioré \emph{tous} les benchmarks simultanément — de $-57$ \% sur \code{PlayRound} à
+$-89$ \% sur \code{HandTotal} — parce qu'il attaquait deux causes d'un coup : la
+consultation de map pour la valeur d'une carte (20,9 \% du temps total) et l'allocation
+des 208 cartes à chaque rebattage. Il a de plus débloqué tous les paliers suivants : on
+ne peut pas indexer un tableau par le rang d'une carte sans que ce rang soit numérique.
+
+\textbf{Le meilleur rapport effort/gain revient toutefois à V1}, le retrait du journal
+narratif du chemin de simulation : une quarantaine de lignes pour $-47$ \% et 31 des 46
+allocations supprimées. Ce journal n'était pas inutile — l'interface l'affiche — mais il
+était produit \emph{sans que l'appelant l'ait demandé} : la forme la plus répandue de
+gaspillage en production, un code partagé entre deux usages payant le coût du plus
+exigeant.
+
+\section{3.3\quad Ce que l'audit a coûté en fausses pistes}
+
+\begin{tabularx}{\textwidth}{@{}>{\small}p{46mm} >{\small\leavevmode\color{muted}}X >{\small}r@{}}
+\toprule
+\textbf{\small Écart} & \textbf{\small Conséquence} & \textbf{\small Ampleur}\\
+\midrule
+Ordre établi sans profil & Deux paliers sur trois dépensés sur des cibles secondaires ; le poste à 32 \% du CPU placé en septième position & \loss{2 paliers}\\
+Mesure unique sur machine chargée & Baseline fausse : le bruit dépassait le signal de plusieurs paliers & \loss{$\times 1{,}9$}\\
+Benchmarks sans puits d'accumulation & Calculs partiellement éliminés par le compilateur, gains surestimés & \loss{$+20$ \%}\\
+Mémoïsation de \code{Hand.Total} & Optimisation rejetée après mesure, branche conservée & \loss{$-72{,}6$ \%}\\
+\bottomrule
+\end{tabularx}
+
+\vspace{5pt}
+\begin{keybox}
+\textbf{Conclusion opérationnelle.} Le moteur simule aujourd'hui \textbf{34,5 millions de
+coups par seconde} contre 342 306 au départ. Concrètement, mesurer l'avantage de la
+maison à 0,01 point près demandait \textbf{48 minutes} sur la version initiale ; il faut
+désormais \textbf{moins de 4 secondes}. L'optimisation n'a pas rendu le programme « plus
+rapide » dans l'abstrait : elle a rendu une mesure statistique \textbf{praticable}.
+L'avantage de la maison mesuré n'a jamais dévié de plus de 0,80 erreur-type de la valeur
+publiée sur l'ensemble des neuf paliers.
+\end{keybox}
+
+% ======================================================= ANNEXE
+\vspace{8pt}
+\partbanner{ANNEXE}{Gouvernance technique IA — \texttt{constitution.md}}
+
+Un fichier \code{constitution.md} à la racine du dépôt prime sur toute suggestion par
+défaut d'un assistant de génération de code.
+
+\textbf{1 — Rôle et posture système.} L'assistant y est défini comme ingénieur systèmes de
+performance, raisonnant en cycles CPU, lignes de cache, défauts de cache et pression du
+ramasse-miettes, jamais en lisibilité. \emph{« Un gain sans mesure est un échec. Une
+mesure sans protocole est du bruit. »}
+
+\textbf{2 — Contraintes négatives explicites.} Sont proscrits sur le chemin chaud :
+\code{fmt.Sprintf} et toute mise en forme de chaîne ; toute allocation sur le tas non
+justifiée par \code{-benchmem} ; la \code{map} comme table de correspondance à domaine
+borné ; les goroutines non bornées ; le \code{math/rand} global ; \code{interface\{\}} et
+la réflexion ; tout verrou pris dans une boucle serrée.
+
+\textbf{3 — Justification empirique obligatoire.} Toute proposition se formule en trois
+lignes et aucune autre forme n'est acceptée : \code{HYPOTHÈSE} (effet physique attendu,
+quantifié), \code{VÉRIFICATION} (commande exacte), \code{RÉFUTATION} (résultat qui
+invaliderait l'hypothèse). Les comparaisons passent par \code{benchstat}, jamais par deux
+nombres bruts ; toute mesure dont la variance dépasse 5 \% est rejetée.
+
+\textbf{4 — Formatage impératif, et obligation de documenter l'échec} — une optimisation
+qui régresse n'est pas supprimée mais consignée, chiffrée, expliquée mécaniquement, puis
+annulée.
+
+\vspace{5pt}
+{\footnotesize\color{muted}Code source, mesures brutes, profils et documentation détaillée :
+\url{https://github.com/MaximeHer/american-blackjack} (dossier \code{docs/}).}
+
+\end{document}
